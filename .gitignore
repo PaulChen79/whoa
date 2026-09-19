@@ -1,0 +1,29 @@
+# 內部設計文件（不隨 repo 發佈）
+# docs/agents/ 與 docs/adr/ 例外：給貢獻者與其 agent 讀的，必須進版控
+docs/*
+!docs/agents/
+!docs/adr/
+
+# 相依與建置產物
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# 環境與金鑰
+.env
+.env.*
+!.env.example
+
+# whoa 執行期狀態（ring buffer、verdict flag、replay 輸出）
+.whoa/
+*.whoa.jsonl
+
+# 編輯器與作業系統
+.DS_Store
+.vscode/
+.idea/
+
+# 測試與覆蓋率
+coverage/
+.nyc_output/
