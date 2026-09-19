@@ -62,8 +62,7 @@ Tool output is read and dropped. So is every field whoa does not recognise,
 including ones added by a future release of your agent: the rule is that
 nothing is kept unless it became a Signal or a redacted command.
 
-You can read the whole of this promise in one place: `internal/redact`. Run
-`whoa digest` to print exactly what would be sent, and send nothing.
+You can read the whole of this promise in one place: `internal/redact`.
 
 ## Configuration
 
