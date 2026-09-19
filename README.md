@@ -127,6 +127,31 @@ prints exactly what would be sent so you can check it against your own account
 before trusting it. A mismatch degrades that Step to Counters; it does not
 break the tool.
 
+## Halt
+
+The exceptional case. whoa denies one step with a reason, using explicit
+`permissionDecision` JSON — never an exit code, because on Claude Code exit 2
+is irreversible and a stop-loss you cannot talk out of a mistake is worse
+than none.
+
+Denying one step is deliberately weaker than ending the turn: the agent
+stops, is told why, and decides again, so it can still rescue itself and you
+are not dragged in to restart anything.
+
+Halt fires when a Verdict crosses `halt_threshold` (0.88), or after
+`ineffective_nudges_before_halt` nudges about the same thing have been
+ignored. The second is the one that matters in practice.
+
+Backoff is counted in code and the gap doubles each time: 3 steps, then 6,
+then 12. If whoa has halted twice and the agent is still going, whoa is not
+what is going to fix this, and it gets quieter rather than louder. A halt is
+always shown to you, whatever `notify` says.
+
+`halt_enabled = false` gives a nudge-only posture. **Halt has no release
+gate**, because there will never be enough samples to calibrate it; the
+compensating decision is that the threshold is conservative and halts stay
+rare.
+
 ## Is it any good?
 
 Nobody knows yet, including the author. whoa's judgement is unproven, so it

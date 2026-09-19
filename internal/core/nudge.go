@@ -220,7 +220,7 @@ func nudgeOutput(f fired, human string) []byte {
 // deliberately different: from a Judge, the person's copy carries the
 // probability and the agent's never does.
 func contextOutput(context, human string) []byte {
-	out, err := json.Marshal(hookOutput{
+	return marshalOutput(hookOutput{
 		HookSpecificOutput: preToolUseOutput{
 			HookEventName:     "PreToolUse",
 			AdditionalContext: context,
@@ -228,6 +228,11 @@ func contextOutput(context, human string) []byte {
 		// systemMessage is the documented way to reach the person watching.
 		SystemMessage: human,
 	})
+}
+
+// marshalOutput is the single place hook output becomes bytes.
+func marshalOutput(o hookOutput) []byte {
+	out, err := json.Marshal(o)
 	if err != nil {
 		// The fields are strings whoa built itself; this cannot fail. If it
 		// somehow does, saying nothing is the documented no-op.
@@ -244,4 +249,9 @@ type hookOutput struct {
 type preToolUseOutput struct {
 	HookEventName     string `json:"hookEventName"`
 	AdditionalContext string `json:"additionalContext,omitempty"`
+	// PermissionDecision denies one Step. It is always explicit JSON and
+	// never an exit code: on Claude Code, exit 2 is irreversible, and a
+	// stop-loss that cannot be talked out of a mistake is worse than none.
+	PermissionDecision string `json:"permissionDecision,omitempty"`
+	PermissionReason   string `json:"permissionDecisionReason,omitempty"`
 }

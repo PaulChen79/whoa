@@ -25,6 +25,9 @@ const (
 	KindWrong Kind = "wrong"
 	// KindVerdict is what the Judge said. In Shadow Mode it is all whoa does.
 	KindVerdict Kind = "verdict"
+	// KindHalt is whoa denying one Step. It is the exceptional case, and it
+	// is recorded so that backoff can be counted from the log alone.
+	KindHalt Kind = "halt"
 	// KindNotice is whoa saying something about itself: that it has degraded,
 	// and why. It lives in the log so that "tell the user once" can be
 	// answered from the same evidence as everything else.

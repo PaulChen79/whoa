@@ -48,18 +48,18 @@ var nouls = []string{"same_intent", "goal_drift", "evading", "needs_human"}
 // forgotten: progress is a Score and lives in a different field, so there is
 // no path by which an uncalibrated impression reaches control flow.
 func (in Input) fromVerdict() Observation {
-	line, v, ok := latestVerdict(in.Log)
-	if !ok || line <= lastVerdictNudge(in.Log) {
+	line, v, _ := latestVerdict(in.Log)
+
+	// Halt is considered first, and can fire on ignored Nudges alone even
+	// when there is no fresh Verdict to act on.
+	if ob, halted := in.halt(line, v); halted {
+		return ob
+	}
+	if line == 0 || line <= lastVerdictActedOn(in.Log) {
 		return Observation{}
 	}
 
-	key, p := "", Strongest(v)
-	for _, n := range nouls {
-		if v.Probabilities[n] == p && p > 0 {
-			key = n
-			break
-		}
-	}
+	key, p := strongestKey(v), Strongest(v)
 	if key == "" || p < in.Config.NudgeThreshold {
 		return Observation{}
 	}
@@ -103,10 +103,15 @@ func latestVerdict(log []Entry) (int, Entry, bool) {
 	return 0, Entry{}, false
 }
 
-// lastVerdictNudge returns the line of the newest Verdict already acted on.
-func lastVerdictNudge(log []Entry) int {
+// lastVerdictActedOn returns the line of the newest Verdict whoa has already
+// responded to, by Nudge or by Halt.
+//
+// A Halt counts. Having just denied a Step over a Verdict, following it with
+// a Nudge about the same Verdict says the same thing twice and makes whoa
+// look like it is not keeping track.
+func lastVerdictActedOn(log []Entry) int {
 	for i := len(log) - 1; i >= 0; i-- {
-		if log[i].Kind == KindNudge && log[i].Ref > 0 {
+		if (log[i].Kind == KindNudge || log[i].Kind == KindHalt) && log[i].Ref > 0 {
 			return log[i].Ref
 		}
 	}

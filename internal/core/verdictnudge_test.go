@@ -97,7 +97,9 @@ func TestEachQuestionCanFireAndNamesItself(t *testing.T) {
 		{"needs_human", "ask"},
 	} {
 		t.Run(q.key, func(t *testing.T) {
-			log := append(failures(3), verdict(map[string]float64{q.key: 0.9}))
+			// Above nudge_threshold and below halt_threshold, so this is a
+			// Nudge and not a Halt.
+			log := append(failures(3), verdict(map[string]float64{q.key: 0.75}))
 			ob := observeFull(t, fullConfig(), log)
 			if ob.Entry == nil {
 				t.Fatalf("%s could not fire a Nudge at 0.9", q.key)
