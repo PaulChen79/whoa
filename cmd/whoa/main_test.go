@@ -97,6 +97,9 @@ func TestHookRecordsRepeatedStepsInOrder(t *testing.T) {
 func TestInstallThenHookThenUninstall(t *testing.T) {
 	s, out, _ := testSystem(t, "")
 	settings := filepath.Join(s.home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settings), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := run([]string{"install"}, s); err != nil {
 		t.Fatalf("install: %v", err)

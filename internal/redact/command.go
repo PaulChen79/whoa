@@ -1,6 +1,7 @@
 package redact
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -87,6 +88,36 @@ func unboundable(raw string) bool {
 		strings.Contains(raw, "-----BEGIN")
 }
 
+// shellWrappers run a script handed to them as a single argument. Codex sends
+// every command through one; Claude Code sends the command itself.
+var shellWrappers = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "fish": true,
+}
+
+// unwrapShell returns the script a shell invocation was asked to run.
+//
+// Without this the same work reads differently on the two Harnesses — `npm
+// test` on Claude Code against `/bin/zsh -lc npm test` on Codex — and a Loop
+// of identical commands would look like a Loop on one and not on the other.
+// Whoa is meant to behave identically on both, so the wrapper comes off.
+func unwrapShell(argv []string) []string {
+	if len(argv) < 3 || !shellWrappers[filepath.Base(argv[0])] {
+		return argv
+	}
+	if flag := argv[1]; !strings.HasPrefix(flag, "-") || !strings.Contains(flag, "c") {
+		return argv
+	}
+	script := argv[2:]
+	// `zsh -lc "a && b"` passes a command line, not an argument, so when it
+	// arrives as one token it has to be split again to be read as one.
+	if len(script) == 1 {
+		if inner, ok := tokenise(script[0]); ok && len(inner) > 0 {
+			return inner
+		}
+	}
+	return script
+}
+
 // Command removes secrets from command text, degrading to argv[0] when it
 // cannot find where a secret ends. See ADR 0003.
 func Command(raw string) Redacted {
@@ -101,6 +132,7 @@ func Command(raw string) Redacted {
 	if !ok {
 		return degrade(raw)
 	}
+	tokens = unwrapShell(tokens)
 	for _, t := range tokens {
 		if len(t) > maxToken {
 			return degrade(raw)
@@ -127,11 +159,18 @@ func Command(raw string) Redacted {
 // degrade keeps the program name and nothing else. argv[0] is text whoa did
 // not write either, so it goes through the same rules on the way out.
 func degrade(raw string) Redacted {
-	argv0 := strings.TrimSpace(raw)
-	if i := strings.IndexAny(argv0, " \t\n\r"); i >= 0 {
-		argv0 = argv0[:i]
+	fields := strings.FieldsFunc(strings.TrimSpace(raw), func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	if len(fields) == 0 {
+		return Redacted{Degraded: true}
 	}
-	return Redacted{Text: token(argv0), Degraded: true}
+	// A degraded shell invocation would otherwise report every Step as
+	// /bin/zsh, which tells a Judge nothing at all.
+	fields = unwrapShell(fields)
+	// Whitespace splitting leaves quote characters attached; argv[0] is a
+	// program name, so they are never part of it.
+	return Redacted{Text: token(strings.Trim(fields[0], `"'`)), Degraded: true}
 }
 
 // token redacts one argument in place.

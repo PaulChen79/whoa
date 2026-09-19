@@ -114,3 +114,34 @@ func TestAnEmptyCommandIsNotAnError(t *testing.T) {
 		t.Errorf("Command(blank) = %+v, want an empty, undegraded result", got)
 	}
 }
+
+// Codex runs every command through a shell; Claude Code does not. If the
+// wrapper survived, the same repeated command would count as a Loop on one
+// Harness and not on the other.
+func TestShellWrappersComeOffSoBothHarnessesAgree(t *testing.T) {
+	tests := map[string]string{
+		`/bin/zsh -lc "npm test"`:               "npm test",
+		`/bin/bash -c "go test ./..."`:          "go test ./...",
+		`sh -c "make build && make check"`:      "make build && make check",
+		`npm test`:                              "npm test",
+		`/bin/zsh`:                              "/bin/zsh",
+		`/usr/bin/env node script.js`:           "/usr/bin/env node script.js",
+		`zsh -lc "API_KEY=abc123def456 deploy"`: "API_KEY=[redacted] deploy",
+	}
+	for command, want := range tests {
+		if got := Command(command); got.Text != want {
+			t.Errorf("Command(%q).Text = %q, want %q", command, got.Text, want)
+		}
+	}
+}
+
+// Degrading a shell invocation must not report every Step as /bin/zsh.
+func TestDegradingLooksPastTheShellWrapper(t *testing.T) {
+	got := Command("/bin/zsh -lc \"cat > .env <<'EOF'\nsecret\nEOF\"")
+	if !got.Degraded {
+		t.Fatal("a heredoc must degrade")
+	}
+	if got.Text != "cat" {
+		t.Errorf("degraded to %q, want the command the shell was asked to run", got.Text)
+	}
+}

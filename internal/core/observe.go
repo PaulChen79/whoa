@@ -21,9 +21,14 @@ const (
 // place an event, so nothing else is stored here.
 type hookEvent struct {
 	Name string
-	// Records is the Outcome this event reports, or "" when the event fires
-	// before the tool runs and records nothing.
-	Records Outcome
+	// Records says the event reports a Step that has finished. When it is
+	// false the event fires before the tool runs and is the Nudge channel.
+	Records bool
+	// Outcome is the Outcome the event name alone implies. Claude Code splits
+	// success and failure across two events, so each one knows which it is.
+	// Codex reports both on one event and leaves whoa to read the tool's own
+	// response; there, this is empty.
+	Outcome Outcome
 }
 
 // hookEvents is the single place that knows which events whoa registers for
@@ -41,8 +46,17 @@ var hookEvents = map[Harness][]hookEvent{
 	ClaudeCode: {
 		{Name: userPromptSubmit},
 		{Name: "PreToolUse"},
-		{Name: "PostToolUse", Records: OutcomeOK},
-		{Name: "PostToolUseFailure", Records: OutcomeError},
+		{Name: "PostToolUse", Records: true, Outcome: OutcomeOK},
+		{Name: "PostToolUseFailure", Records: true, Outcome: OutcomeError},
+	},
+	// Codex has no PostToolUseFailure. Registering for one would install a
+	// hook that never fires, which is precisely the silent failure `whoa
+	// doctor` exists to catch, so the Outcome is read from tool_response
+	// instead. See ADR 0005.
+	Codex: {
+		{Name: userPromptSubmit},
+		{Name: "PreToolUse"},
+		{Name: "PostToolUse", Records: true},
 	},
 }
 
@@ -60,6 +74,26 @@ func Events(h Harness) []string {
 		names = append(names, e.Name)
 	}
 	return names
+}
+
+// AllEvents lists every event any Harness registers, without duplicates.
+//
+// Uninstall works from this rather than from one Harness's list, so that a
+// handler left behind by an earlier version, or by the other Harness, is
+// still removed. A stop-loss that cannot be fully uninstalled is a bad
+// citizen in someone else's settings file.
+func AllEvents() []string {
+	var all []string
+	seen := map[string]bool{}
+	for _, harness := range []Harness{ClaudeCode, Codex} {
+		for _, name := range Events(harness) {
+			if !seen[name] {
+				seen[name] = true
+				all = append(all, name)
+			}
+		}
+	}
+	return all
 }
 
 // Input is everything the core needs in order to decide. The shell gathers it;
@@ -101,9 +135,71 @@ type hookPayload struct {
 	ToolName   string          `json:"tool_name"`
 	ToolUseID  string          `json:"tool_use_id"`
 	ToolInput  json.RawMessage `json:"tool_input"`
+	ToolResp   json.RawMessage `json:"tool_response"`
 	Prompt     string          `json:"prompt"`
 	AgentID    string          `json:"agent_id"`
 	DurationMS int             `json:"duration_ms"`
+}
+
+// toolResponse is the part of a tool's own report whoa reads. Every field is
+// optional because the field is schema-typed as "any JSON at all" on Codex:
+// what arrives depends on which tool ran.
+type toolResponse struct {
+	ExitCode *int   `json:"exit_code"`
+	Status   string `json:"status"`
+	Success  *bool  `json:"success"`
+	Error    string `json:"error"`
+	Duration *struct {
+		Secs  int `json:"secs"`
+		Nanos int `json:"nanos"`
+	} `json:"duration"`
+}
+
+// outcome decides whether a finished Step succeeded.
+//
+// When the event name settles it, that is the answer: Claude Code has already
+// told whoa which of two events this is, and no amount of reading the response
+// can be more authoritative than that.
+//
+// Otherwise the tool's own response has to say. Codex reports success and
+// failure on one event, and its tool_response is unconstrained by any schema,
+// so this reads the fields its tools are actually observed to send and treats
+// anything it cannot read as success.
+//
+// Defaulting to success is the conservative direction and it is a real cost:
+// a missed failure makes a Loop take longer to notice. The alternative is
+// worse. Every apply_patch returns a bare string, so defaulting to failure
+// would mark every successful edit on Codex as a failure and Nudge constantly
+// about work that went fine, which is how a stop-loss gets uninstalled.
+func (p hookPayload) outcome(e hookEvent) Outcome {
+	if e.Outcome != "" {
+		return e.Outcome
+	}
+	var r toolResponse
+	if len(p.ToolResp) == 0 || json.Unmarshal(p.ToolResp, &r) != nil {
+		return OutcomeOK
+	}
+	switch {
+	case r.ExitCode != nil && *r.ExitCode != 0,
+		r.Success != nil && !*r.Success,
+		r.Error != "",
+		r.Status == "failed", r.Status == "error", r.Status == "timeout":
+		return OutcomeError
+	}
+	return OutcomeOK
+}
+
+// duration reports how long a Step took, in milliseconds, from whichever unit
+// the Harness chose to express it in.
+func (p hookPayload) duration() int {
+	if p.DurationMS != 0 {
+		return p.DurationMS
+	}
+	var r toolResponse
+	if len(p.ToolResp) == 0 || json.Unmarshal(p.ToolResp, &r) != nil || r.Duration == nil {
+		return 0
+	}
+	return r.Duration.Secs*1000 + r.Duration.Nanos/1_000_000
 }
 
 // event finds the hookEvent this payload belongs to, if whoa registered for it.
@@ -168,7 +264,7 @@ func Observe(in Input) Observation {
 		return Observation{}
 	}
 
-	if event.Records == "" {
+	if !event.Records {
 		return in.intervene(p)
 	}
 
@@ -186,8 +282,8 @@ func Observe(in Input) Observation {
 		Signals:    signals,
 		AgentID:    p.AgentID,
 		Goal:       goalInForce(in.Log),
-		Outcome:    event.Records,
-		DurationMS: p.DurationMS,
+		Outcome:    p.outcome(event),
+		DurationMS: p.duration(),
 	}}
 }
 

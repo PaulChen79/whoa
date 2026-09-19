@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/PaulChen79/whoa/internal/config"
@@ -24,8 +25,9 @@ var version = "dev"
 const usage = `whoa — stop-loss for coding agents
 
 Usage:
-  whoa install     register whoa's hooks with Claude Code
+  whoa install     register whoa's hooks with Claude Code and Codex
   whoa uninstall   remove them again
+  whoa doctor      check whoa is actually running, per Harness
   whoa hook        observe one Step (invoked by the Harness, reads stdin)
   whoa version     print the version
 `
@@ -70,9 +72,11 @@ func run(args []string, s system) error {
 	}
 	switch args[0] {
 	case "hook":
-		return hook(s)
+		return hook(s, harnessFrom(args[1:]))
 	case "install":
 		return installCmd(s)
+	case "doctor":
+		return doctorCmd(s)
 	case "uninstall":
 		return uninstallCmd(s)
 	case "version", "--version", "-v":
@@ -93,7 +97,25 @@ func run(args []string, s system) error {
 // nothing: a Step whoa cannot record is a Step it forgets, not a Step the
 // agent is told failed. Silence is the documented no-op for a Claude Code
 // hook, so emitting nothing is also the safest thing to emit.
-func hook(s system) error {
+// harnessFrom reads the Harness the installed hook was told to report as.
+//
+// Nothing in a payload says which Harness sent it, so install writes the
+// answer into the command it registers. An older handler without the flag is
+// Claude Code, which is the only Harness that existed before the flag did.
+func harnessFrom(args []string) core.Harness {
+	for _, arg := range args {
+		if name, ok := strings.CutPrefix(arg, "--harness="); ok {
+			for _, known := range []core.Harness{core.ClaudeCode, core.Codex} {
+				if core.Harness(name) == known {
+					return known
+				}
+			}
+		}
+	}
+	return core.ClaudeCode
+}
+
+func hook(s system, harness core.Harness) error {
 	raw, err := io.ReadAll(s.stdin)
 	if err != nil {
 		warn(s, err)
@@ -116,7 +138,7 @@ func hook(s system) error {
 
 	ob := core.Observe(core.Input{
 		Raw:     raw,
-		Harness: core.ClaudeCode,
+		Harness: harness,
 		Log:     log,
 		Config:  cfg,
 		Now:     s.now(),
@@ -150,35 +172,58 @@ func installCmd(s system) error {
 	if s.binary == "" {
 		return fmt.Errorf("could not find the whoa binary to install")
 	}
-	path := claudeSettingsPath(s)
-	changed, err := install.Install(path, s.binary)
-	if err != nil {
-		return err
+
+	installed := 0
+	for _, t := range targets(s.home) {
+		if !t.present() {
+			continue
+		}
+		installed++
+		changed, err := install.Install(t.settings, s.binary, t.harness)
+		if err != nil {
+			return fmt.Errorf("%s: %w", t.name, err)
+		}
+		if changed {
+			fmt.Fprintf(s.stdout, "Installed whoa for %s in %s\n", t.name, t.settings)
+		} else {
+			fmt.Fprintf(s.stdout, "whoa is already installed for %s in %s\n", t.name, t.settings)
+		}
+		// The trust step is printed whether or not anything changed, because
+		// an install that "succeeded" earlier and was never trusted is
+		// exactly the silent non-protection this is here to prevent.
+		if len(t.trust) > 0 {
+			fmt.Fprintf(s.stdout, "\n  REQUIRED for %s:\n%s\n", t.name, indent(t.trust, "    "))
+		}
 	}
-	if !changed {
-		fmt.Fprintf(s.stdout, "whoa is already installed in %s\n", path)
-		return nil
+
+	if installed == 0 {
+		return fmt.Errorf("found neither Claude Code nor Codex under %s", s.home)
 	}
-	fmt.Fprintf(s.stdout, "Installed whoa in %s\n", path)
+
 	cfg, err := config.Load(s.home)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(s.stdout, "Restart Claude Code, then run a tool call. Steps are recorded under", filepath.Join(cfg.StateDir, "sessions"))
+	fmt.Fprintf(s.stdout, "Steps are recorded under %s\n", filepath.Join(cfg.StateDir, "sessions"))
+	fmt.Fprintln(s.stdout, "Restart the agent, run a tool call, then `whoa doctor` to confirm it is running.")
 	return nil
 }
 
 func uninstallCmd(s system) error {
-	path := claudeSettingsPath(s)
-	changed, err := install.Uninstall(path)
-	if err != nil {
-		return err
+	removed := 0
+	for _, t := range targets(s.home) {
+		changed, err := install.Uninstall(t.settings)
+		if err != nil {
+			return fmt.Errorf("%s: %w", t.name, err)
+		}
+		if changed {
+			removed++
+			fmt.Fprintf(s.stdout, "Removed whoa from %s\n", t.settings)
+		}
 	}
-	if !changed {
-		fmt.Fprintf(s.stdout, "whoa was not installed in %s\n", path)
-		return nil
+	if removed == 0 {
+		fmt.Fprintln(s.stdout, "whoa was not installed for any Harness")
 	}
-	fmt.Fprintf(s.stdout, "Removed whoa from %s\n", path)
 	return nil
 }
 

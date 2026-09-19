@@ -18,11 +18,6 @@ import (
 	"github.com/PaulChen79/whoa/internal/core"
 )
 
-// harness is the Harness whose settings file this package writes. Codex has a
-// different settings file and different event names; it arrives with its own
-// Harness value rather than by widening this one.
-const harness = core.ClaudeCode
-
 // handler is one hook handler entry in a settings file.
 //
 // It carries only the fields Claude Code documents. whoa would rather identify
@@ -50,15 +45,27 @@ const binaryName = "whoa"
 // subcommand is the argument whoa's hook handlers pass.
 const subcommand = "hook"
 
+// harnessFlag tells the running hook which Harness invoked it.
+//
+// The binary cannot work this out for itself: both Harnesses send a payload on
+// stdin and neither says who it is. Guessing from which fields are present
+// would silently mislabel Steps, and a Step attributed to the wrong Harness is
+// worse than no Step, because `whoa doctor` would then report a Harness as
+// observing when it is not. Install knows, so install writes it down.
+const harnessFlag = "--harness="
+
 // timeoutSeconds is far more than the binary needs. It exists so that a
 // pathological filesystem stall cannot hold up the agent indefinitely; the
 // observed cost of a Step is a couple of milliseconds.
 const timeoutSeconds = 10
 
-// Install adds whoa's hook handlers to the settings file at path, creating the
-// file if it does not exist. It reports whether it changed anything, so
-// running it twice is a no-op the second time.
-func Install(path, binary string) (bool, error) {
+// Install reports whether it changed anything, so running it twice is a no-op
+// the second time.
+//
+// Install adds whoa's hook handlers for one Harness to the settings file at
+// path, creating the file if it does not exist. Both Harnesses use the same
+// settings shape, so only the path and the event names differ.
+func Install(path, binary string, harness core.Harness) (bool, error) {
 	settings, err := load(path)
 	if err != nil {
 		return false, err
@@ -82,7 +89,7 @@ func Install(path, binary string) (bool, error) {
 			Matcher: "*",
 			Hooks: []handler{{
 				Type:    "command",
-				Command: fmt.Sprintf("%s %s", shellQuote(binary), subcommand),
+				Command: fmt.Sprintf("%s %s %s%s", shellQuote(binary), subcommand, harnessFlag, harness),
 				Timeout: timeoutSeconds,
 			}},
 		})
@@ -113,7 +120,7 @@ func Uninstall(path string) (bool, error) {
 	}
 
 	changed := false
-	for _, event := range core.Events(harness) {
+	for _, event := range core.AllEvents() {
 		groups, err := groupsFor(hooks, event)
 		if err != nil {
 			return false, err
@@ -251,11 +258,23 @@ func hasWhoa(groups []group) bool {
 // command it runs: a binary called whoa, invoked with whoa's own subcommand.
 func (h handler) owned() bool {
 	cmd := strings.TrimSpace(h.Command)
+	// Trailing flags are whoa's own and may change between versions, so
+	// ownership is decided by the binary and the subcommand alone; otherwise
+	// an upgrade would strand every handler an older version wrote.
+	//
+	// The command is trimmed from the right rather than split into fields,
+	// because the binary path is quoted and routinely contains spaces.
+	for {
+		i := strings.LastIndex(cmd, " ")
+		if i < 0 || !strings.HasPrefix(cmd[i+1:], "-") {
+			break
+		}
+		cmd = strings.TrimSpace(cmd[:i])
+	}
 	if !strings.HasSuffix(cmd, " "+subcommand) {
 		return false
 	}
-	binary := shellUnquote(strings.TrimSpace(strings.TrimSuffix(cmd, subcommand)))
-	name := filepath.Base(binary)
+	name := filepath.Base(shellUnquote(strings.TrimSpace(strings.TrimSuffix(cmd, subcommand))))
 	return name == binaryName || name == binaryName+".exe"
 }
 
@@ -280,4 +299,46 @@ func indent(raw []byte) ([]byte, error) {
 	}
 	buf.WriteByte('\n')
 	return buf.Bytes(), nil
+}
+
+// Registered reports whether whoa's handlers are present in the settings file
+// at path, and on which events.
+//
+// `whoa doctor` asks this rather than assuming an install that returned no
+// error is still in place: a settings file is a file the user also edits.
+func Registered(path string, harness core.Harness) ([]string, error) {
+	settings, err := load(path)
+	if err != nil {
+		return nil, err
+	}
+	hooks, err := hooksObject(settings)
+	if err != nil {
+		return nil, err
+	}
+	var found []string
+	for _, event := range core.Events(harness) {
+		groups, err := groupsFor(hooks, event)
+		if err != nil {
+			return nil, err
+		}
+		if hasWhoa(groups) {
+			found = append(found, event)
+		}
+	}
+	return found, nil
+}
+
+// DisableAllHooks reports whether the settings file turns every hook off. It
+// is one key, it is silent, and it makes whoa a no-op.
+func DisableAllHooks(path string) bool {
+	settings, err := load(path)
+	if err != nil {
+		return false
+	}
+	raw, ok := settings.get("disableAllHooks")
+	if !ok {
+		return false
+	}
+	var disabled bool
+	return json.Unmarshal(raw, &disabled) == nil && disabled
 }

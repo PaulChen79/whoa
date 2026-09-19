@@ -64,6 +64,28 @@ nothing is kept unless it became a Signal or a redacted command.
 
 You can read the whole of this promise in one place: `internal/redact`.
 
+## Harnesses
+
+| | Claude Code | Codex |
+|---|---|---|
+| Observes Steps | yes | yes |
+| Detects a failed Step | from the event | read from `tool_response` — see below |
+| Records the Goal | yes | yes |
+| Nudges before the next Step | yes | yes |
+| Needs a trust step after install | no | **yes** — run `/hooks` in Codex |
+
+Codex reports successful and failed tool calls on one event and does not
+document how a failure is expressed, so whoa infers it from the fields Codex's
+tools are observed to send. Where it cannot tell, it records success. That
+means whoa can miss a Codex failure and be slower to notice a Loop there. See
+[ADR 0005](docs/adr/0005-codex-outcome-from-tool-response.md).
+
+Run `whoa doctor` to check whoa is actually running. It reports, per Harness,
+whether the hook is registered, whether an administrator policy
+(`allowManagedHooksOnly`, `allow_managed_hooks_only`, `disableAllHooks`) is
+silently disabling it, and when it last actually observed a Step. It exits
+non-zero when nothing is running, so it can be used as a check.
+
 ## Configuration
 
 whoa reads `~/.whoa/config.json` if it exists. Every key is optional; anything

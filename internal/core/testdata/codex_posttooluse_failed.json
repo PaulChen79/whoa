@@ -1,0 +1,20 @@
+{
+  "session_id": "01a0661c-c64c-7fa3-ad94-4038b0792174",
+  "turn_id": "01a0661c-4245-7e43-a838-3c0b110065c5",
+  "hook_event_name": "PostToolUse",
+  "cwd": "/Users/u/proj",
+  "transcript_path": "/Users/u/.codex/sessions/2026/09/03/rollout.jsonl",
+  "permission_mode": "default",
+  "model": "gpt-5-codex",
+  "tool_name": "exec",
+  "tool_use_id": "exec-3af96745-73d2-4a42-aa10-1fcf4a8436a1",
+  "tool_input": {"command": ["/bin/zsh", "-lc", "npm test"]},
+  "tool_response": {
+    "status": "failed",
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "Cannot find module './auth.ts'\n",
+    "aggregated_output": "Cannot find module './auth.ts'\n",
+    "duration": {"secs": 4, "nanos": 187000000}
+  }
+}

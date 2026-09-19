@@ -1,0 +1,10 @@
+{
+  "session_id": "01a0661c-c64c-7fa3-ad94-4038b0792174",
+  "turn_id": "01a0661c-9999-7e43-a838-3c0b110065c5",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": "/Users/u/proj",
+  "transcript_path": null,
+  "permission_mode": "default",
+  "model": "gpt-5-codex",
+  "prompt": "fix the failing auth tests"
+}

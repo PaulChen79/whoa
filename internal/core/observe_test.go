@@ -195,23 +195,42 @@ func TestStepIsOneJSONLine(t *testing.T) {
 }
 
 // Install registers whatever the core says it handles, so the two can never
-// drift apart into a Harness whose failures are never seen, or a Nudge with no
-// event to be delivered on.
-func TestEventsCoverBothOutcomesAndTheNudgeChannel(t *testing.T) {
-	events := Events(ClaudeCode)
+// drift apart into a Harness whose Steps are never seen, or a Nudge with no
+// event to be delivered on. This runs for every Harness whoa claims to
+// support, because a gap on the second one is exactly as silent as on the
+// first.
+func TestEveryHarnessCanObserveAndCanSpeak(t *testing.T) {
+	for harness := range hookEvents {
+		t.Run(string(harness), func(t *testing.T) {
+			var records, speaks bool
+			for _, name := range Events(harness) {
+				event, ok := hookPayload{Event: name}.event(harness)
+				if !ok {
+					t.Errorf("registered %q but do not handle it", name)
+				}
+				records = records || event.Records
+				speaks = speaks || (!event.Records && name != userPromptSubmit)
+			}
+			if !records {
+				t.Error("no event records a Step, so whoa sees nothing")
+			}
+			if !speaks {
+				t.Error("no event fires before a Step, so a Nudge has no way to reach the agent")
+			}
+		})
+	}
+}
+
+// Claude Code is the Harness that settles the Outcome by which event fired, so
+// both of those events have to be registered or its failures go unseen.
+func TestClaudeCodeRegistersBothOutcomeEvents(t *testing.T) {
 	seen := map[Outcome]bool{}
-	for _, name := range events {
-		event, ok := hookPayload{Event: name}.event(ClaudeCode)
-		if !ok {
-			t.Errorf("registered %q but do not handle it", name)
-		}
-		seen[event.Records] = true
+	for _, name := range Events(ClaudeCode) {
+		event, _ := hookPayload{Event: name}.event(ClaudeCode)
+		seen[event.Outcome] = true
 	}
 	if !seen[OutcomeOK] || !seen[OutcomeError] {
 		t.Errorf("events cover %v, want both ok and error", seen)
-	}
-	if !seen[""] {
-		t.Error("no event fires before a Step, so a Nudge has no way to reach the agent")
 	}
 }
 

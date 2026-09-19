@@ -1,0 +1,13 @@
+{
+  "session_id": "01a0661c-c64c-7fa3-ad94-4038b0792174",
+  "turn_id": "01a0661c-4245-7e43-a838-3c0b110065c5",
+  "hook_event_name": "PostToolUse",
+  "cwd": "/Users/u/proj",
+  "transcript_path": null,
+  "permission_mode": "default",
+  "model": "gpt-5-codex",
+  "tool_name": "apply_patch",
+  "tool_use_id": "exec-11111111-2222-3333-4444-555555555555",
+  "tool_input": {"path": "src/auth_test.ts", "patch": "--- a\n+++ b\n-  expect(user).toBe(null)\n+  it.skip('logs in', () => {})\n"},
+  "tool_response": "Success. Updated the following files:\nM src/auth_test.ts"
+}

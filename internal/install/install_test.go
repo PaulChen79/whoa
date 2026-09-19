@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PaulChen79/whoa/internal/core"
 )
 
 const bin = "/usr/local/bin/whoa"
@@ -41,7 +43,7 @@ func hookEvents(t *testing.T, p string) map[string][]map[string]any {
 
 func TestInstallCreatesSettingsWhenMissing(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "settings.json")
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 	if _, ok := hookEvents(t, p)["PostToolUse"]; !ok {
@@ -53,7 +55,7 @@ func TestInstallCreatesSettingsWhenMissing(t *testing.T) {
 // so without the failure event whoa is blind to the Steps that matter most.
 func TestInstallRegistersBothSuccessAndFailureEvents(t *testing.T) {
 	p := write(t, `{}`)
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatal(err)
 	}
 	h := hookEvents(t, p)
@@ -66,12 +68,12 @@ func TestInstallRegistersBothSuccessAndFailureEvents(t *testing.T) {
 
 func TestInstallIsIdempotent(t *testing.T) {
 	p := write(t, `{}`)
-	if changed, err := Install(p, bin); err != nil || !changed {
+	if changed, err := Install(p, bin, core.ClaudeCode); err != nil || !changed {
 		t.Fatalf("first install: changed=%v err=%v", changed, err)
 	}
 	first := read(t, p)
 
-	changed, err := Install(p, bin)
+	changed, err := Install(p, bin, core.ClaudeCode)
 	if err != nil {
 		t.Fatalf("second install: %v", err)
 	}
@@ -85,7 +87,7 @@ func TestInstallIsIdempotent(t *testing.T) {
 
 func TestInstallKeepsUnrelatedSettings(t *testing.T) {
 	p := write(t, `{"model":"opus","permissions":{"allow":["Bash"]},"env":{"FOO":"bar"}}`)
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatal(err)
 	}
 	var got map[string]any
@@ -101,7 +103,7 @@ func TestInstallKeepsUnrelatedSettings(t *testing.T) {
 
 func TestInstallKeepsOtherToolsHooks(t *testing.T) {
 	p := write(t, `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"rtk-rewrite"}]}]}}`)
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatal(err)
 	}
 	// whoa now registers a PreToolUse hook of its own for the Nudge, so it
@@ -120,7 +122,7 @@ func TestInstallKeepsOtherToolsHooks(t *testing.T) {
 func TestUninstallLeavesOtherToolsPreToolUseHookAlone(t *testing.T) {
 	before := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"rtk-rewrite"}]}]}}`
 	p := write(t, before)
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Uninstall(p); err != nil {
@@ -137,7 +139,7 @@ func TestUninstallLeavesOtherToolsPreToolUseHookAlone(t *testing.T) {
 
 func TestInstallKeepsOtherHandlersOnTheSameEvent(t *testing.T) {
 	p := write(t, `{"hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"someone-else"}]}]}}`)
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(read(t, p), "someone-else") {
@@ -152,7 +154,7 @@ func TestInstallKeepsOtherHandlersOnTheSameEvent(t *testing.T) {
 // out of an install.
 func TestInstallPreservesTopLevelKeyOrder(t *testing.T) {
 	p := write(t, `{"zulu":1,"alpha":2,"model":"opus"}`)
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatal(err)
 	}
 	got := read(t, p)
@@ -165,7 +167,7 @@ func TestInstallPreservesTopLevelKeyOrder(t *testing.T) {
 func TestInstallRefusesToTouchMalformedSettings(t *testing.T) {
 	original := `{"model": "opus",`
 	p := write(t, original)
-	if _, err := Install(p, bin); err == nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err == nil {
 		t.Error("expected an error for malformed settings")
 	}
 	if got := read(t, p); got != original {
@@ -175,7 +177,7 @@ func TestInstallRefusesToTouchMalformedSettings(t *testing.T) {
 
 func TestUninstallRemovesOnlyWhoasHandlers(t *testing.T) {
 	p := write(t, `{"model":"opus","hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"someone-else"}]}]}}`)
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Uninstall(p); err != nil {
@@ -198,7 +200,7 @@ func TestUninstallRemovesOnlyWhoasHandlers(t *testing.T) {
 // exact failure whoa exists to prevent.
 func TestInstallWritesOnlyDocumentedHandlerFields(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "settings.json")
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 	documented := map[string]bool{"type": true, "command": true, "timeout": true}
@@ -225,11 +227,11 @@ func TestInstallWritesOnlyDocumentedHandlerFields(t *testing.T) {
 func TestInstallQuotesABinaryPathWithSpaces(t *testing.T) {
 	const spaced = "/Users/some one/Library/Application Support/whoa"
 	p := filepath.Join(t.TempDir(), "settings.json")
-	if _, err := Install(p, spaced); err != nil {
+	if _, err := Install(p, spaced, core.ClaudeCode); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 	command := hookEvents(t, p)["PostToolUse"][0]["hooks"].([]any)[0].(map[string]any)["command"].(string)
-	if want := `'` + spaced + `' hook`; command != want {
+	if want := `'` + spaced + `' hook --harness=claude-code`; command != want {
 		t.Errorf("command = %q, want %q", command, want)
 	}
 
@@ -252,7 +254,7 @@ func TestInstallKeepsTheSettingsFilePermissions(t *testing.T) {
 	if err := os.Chmod(p, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 	info, err := os.Stat(p)
@@ -268,7 +270,7 @@ func TestInstallKeepsTheSettingsFilePermissions(t *testing.T) {
 // being narrowed behind the user's back.
 func TestInstallCreatesSettingsPrivate(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "settings.json")
-	if _, err := Install(p, bin); err != nil {
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 	info, err := os.Stat(p)
@@ -299,5 +301,83 @@ func TestUninstallLeavesALookalikeHandlerAlone(t *testing.T) {
 	}
 	if !strings.Contains(read(t, p), "othertool") {
 		t.Errorf("uninstall removed another tool's hook:\n%s", read(t, p))
+	}
+}
+
+// The two Harnesses fire different events. Installing Claude Code's list into
+// Codex would register PostToolUseFailure, which Codex never fires — a hook
+// that looks installed and can never run.
+func TestEachHarnessGetsOnlyItsOwnEvents(t *testing.T) {
+	for _, harness := range []core.Harness{core.ClaudeCode, core.Codex} {
+		p := filepath.Join(t.TempDir(), "settings.json")
+		if _, err := Install(p, bin, harness); err != nil {
+			t.Fatal(err)
+		}
+		registered, err := Registered(p, harness)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(registered) != len(core.Events(harness)) {
+			t.Errorf("%s: registered %v, want %v", harness, registered, core.Events(harness))
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if harness == core.Codex && strings.Contains(string(b), "PostToolUseFailure") {
+			t.Error("Codex settings contain an event Codex never fires")
+		}
+	}
+}
+
+// Uninstall works from every Harness's events, not one's, so a file written by
+// an earlier version or by the other Harness is still cleaned up.
+func TestUninstallRemovesAnotherHarnessesHandlers(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.json")
+	if _, err := Install(p, bin, core.ClaudeCode); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := Uninstall(p)
+	if err != nil || !changed {
+		t.Fatalf("Uninstall = %v, %v", changed, err)
+	}
+	for _, harness := range []core.Harness{core.ClaudeCode, core.Codex} {
+		registered, err := Registered(p, harness)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(registered) != 0 {
+			t.Errorf("%s: %v left behind", harness, registered)
+		}
+	}
+}
+
+// A handler written by a version of whoa that predates a flag is still whoa's,
+// or an upgrade would leave a duplicate hook behind and uninstall would miss
+// it.
+func TestOwnershipSurvivesAChangeOfFlags(t *testing.T) {
+	owned := []string{
+		`'/usr/local/bin/whoa' hook`,
+		`'/usr/local/bin/whoa' hook --harness=codex`,
+		`'/usr/local/bin/whoa' hook --harness=claude-code --future-flag`,
+		`/usr/local/bin/whoa hook`,
+		`'/Users/some one/bin/whoa' hook --harness=codex`,
+	}
+	for _, command := range owned {
+		if !(handler{Type: "command", Command: command}).owned() {
+			t.Errorf("did not recognise its own handler: %s", command)
+		}
+	}
+	foreign := []string{
+		`'/usr/local/bin/ruler' hook`,
+		`'/usr/local/bin/whoa-extra' hook`,
+		`'/usr/local/bin/whoa' doctor`,
+		`echo hello`,
+		``,
+	}
+	for _, command := range foreign {
+		if (handler{Type: "command", Command: command}).owned() {
+			t.Errorf("claimed a handler it does not own: %s", command)
+		}
 	}
 }
