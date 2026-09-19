@@ -11,19 +11,40 @@ It is a hook. It runs in Claude Code and Codex, it is a single static binary
 with no runtime to install, and by default it costs nothing and sends nothing
 anywhere.
 
-> **Status: v0, under construction.** Counter-only Mode works today. The Judge
-> is not wired up yet. See the [issue tracker](https://github.com/PaulChen79/whoa/issues).
+> **Status: v0.** Counter-only Mode is finished and is the default. The Judge
+> is implemented and works end to end, but **its judgement is unproven**: the
+> release gate is 50 hand-labelled Verdicts at a false positive rate of 20% or
+> better, and the corpus currently stands at 0. Run `whoa calibrate` to see
+> where it is. Until then, `counters` is the mode to trust.
 
 ## Install
 
 ```sh
 go install github.com/PaulChen79/whoa/cmd/whoa@latest
 whoa install
+whoa doctor
 ```
 
-`whoa install` merges its hooks into your existing `~/.claude/settings.json`,
-leaving every other setting exactly as it was. `whoa uninstall` takes them out
-again. Both are idempotent.
+`whoa install` registers its hooks with every Harness it finds: Claude Code in
+`~/.claude/settings.json`, Codex in `~/.codex/hooks.json`. It merges into what
+is already there and leaves every other setting exactly as it was, key order
+included. `whoa uninstall` takes them out again. Both are idempotent, and
+neither touches a Harness that is not installed.
+
+**Codex needs one more step.** Codex will not run a hook it has not been told
+to trust, and it fails quietly rather than loudly:
+
+```
+codex          # then run /hooks, review whoa, and trust it
+```
+
+`whoa doctor` is how you find out whether any of this actually worked. It
+reports, per Harness, whether the hook is registered, whether an administrator
+policy is silently disabling it, and when it last really observed a Step. It
+exits non-zero when nothing is running, so you can put it in a check. Run it
+once after installing: an unregistered hook and a registered-but-untrusted one
+look identical from the outside, and both leave you believing you are
+protected when you are not.
 
 ## What it does
 
@@ -44,19 +65,40 @@ In the default Mode, whoa makes no network calls at all.
 Whatever the Mode, your source code never leaves the machine. whoa reads a
 tool's arguments and keeps two things from them, and nothing else:
 
-**Signals** — counts and flags, never text. From an edit whoa keeps how many
-assertions it added and removed, how many skip markers it added, how many
-lines changed, and whether the file was a test. It does not keep the code, the
-file path, or the file name. Every Signal field is machine-checked to be a
-number or a boolean, so a field that carried text would fail the build.
+**Signals** — counts and flags, never text. This is the complete list:
 
-**Commands**, after Redaction. Inline environment values, credentials in URLs,
-authorization and cookie headers, values after flags like `--token`, published
-key shapes (`sk-`, `ghp_`, `AKIA`, `xoxb-`, JWTs and others) and unstructured
-blobs of 32 characters or more are replaced with `[redacted]`. When whoa cannot
-find where a secret ends — a heredoc, a key body, an unbalanced quote, anything
-spanning more than one line — it keeps the program name and discards the entire
-rest of the command.
+| Signal | Type |
+|---|---|
+| `test_file` | boolean — was the edited file a test |
+| `assertions_added` | count |
+| `assertions_removed` | count |
+| `skip_markers_added` | count — `it.skip`, `xit`, `@pytest.mark.skip`, `t.Skip`, `#[ignore]`, `.only` and friends |
+| `lines_added` | count |
+| `lines_removed` | count |
+
+That is all of it. Not the code, not the file path, not the file name. Every
+field is a number or a boolean, and a fuzz test asserts that no input of any
+shape produces a Signal containing a fragment of that input.
+
+**Commands**, after Redaction. The complete list of rules:
+
+| Rule | Example in | Kept |
+|---|---|---|
+| Inline environment values | `API_KEY=abc deploy` | `API_KEY=[redacted] deploy` |
+| Values after a secret flag | `--token ghp_…` | `--token [redacted]` |
+| Credentials in a URL | `https://bob:pw@host/x` | `https://[redacted]@host/x` |
+| Authorization, cookie and API-key headers | `Authorization: Bearer …` | `Authorization: [redacted]` |
+| Published key shapes | `sk-`, `sk-ant-`, `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `github_pat_`, `glpat-`, `AKIA`, `ASIA`, `xoxb-`/`xoxp-`/`xoxa-`/`xoxr-`/`xoxs-`/`xoxe-`, `AIza`, `npm_`, JWTs | `[redacted]` |
+| Opaque blobs of 32+ characters | a 48-character hex string | `[redacted]` |
+
+whoa unwraps `sh -c` / `zsh -lc` wrappers first, so a Codex command and a
+Claude Code command for the same work read the same.
+
+When whoa cannot tell where a secret *ends*, it keeps nothing but the program
+name. That happens for a heredoc, a private key body, an unbalanced quote, any
+single token over 256 characters, and anything spanning more than one line —
+all the shapes where file contents get embedded in a command line. A worse
+Verdict on a few Steps is an acceptable price; a leaked key is not.
 
 Tool output is read and dropped. So is every field whoa does not recognise,
 including ones added by a future release of your agent: the rule is that
@@ -73,11 +115,21 @@ the Judge on.
 
 | | Claude Code | Codex |
 |---|---|---|
+| Hook config | `~/.claude/settings.json` | `~/.codex/hooks.json` |
 | Observes Steps | yes | yes |
-| Detects a failed Step | from the event | read from `tool_response` — see below |
+| Separate event for a failed Step | yes, `PostToolUseFailure` | no — inferred from `tool_response` |
 | Records the Goal | yes | yes |
 | Nudges before the next Step | yes | yes |
-| Needs a trust step after install | no | **yes** — run `/hooks` in Codex |
+| Halts a Step | `permissionDecision: "deny"` | `permissionDecision: "deny"` |
+| **`PostToolUse` can block** | **no** | **yes** |
+| Trust step after install | no | **yes** — run `/hooks` in Codex |
+| Administrator kill switch | `allowManagedHooksOnly`, `disableAllHooks` | `allow_managed_hooks_only` |
+
+Codex can block a tool call *after* it has run and Claude Code cannot. whoa
+does not use that. It halts only before a Step, on both, so the two behave
+identically and nothing whoa does depends on a capability only one Harness
+has. The asymmetry is listed because you should read it here rather than
+discover it.
 
 Codex reports successful and failed tool calls on one event and does not
 document how a failure is expressed, so whoa infers it from the fields Codex's
@@ -173,6 +225,17 @@ uninstalled. A miss just leaves you where you already were.
 
 Logs holding a Misjudgment are never expired, whatever `retention_days` says.
 
+**whoa's own result so far: 0 samples.** No corpus has been collected, so the
+honest answer to "is the Judge any good?" is that nobody knows. That is why
+`counters` is the default and `full` is not.
+
+**And the Judge's own numbers are not independent evidence.** Every published
+Jev evaluation is vendor-self-reported. There is no paper, no reliability
+curve, and no expected calibration error. The claim whoa leans on — that the
+returned probability is calibrated — is exactly the claim with no third-party
+measurement behind it. If it does not hold, Counter-only Mode is the product,
+and Counter-only Mode is finished, free and offline.
+
 ## Parameters
 
 | Key | Default | What it does |
@@ -193,10 +256,24 @@ Logs holding a Misjudgment are never expired, whatever `retention_days` says.
 | `on_missing_key` | `"degrade"` | With no API key, `degrade` falls back to Counter-only Mode; `error` tells you that you are unprotected. |
 
 Everything above is a **Parameter**: getting it wrong makes whoa noisy or dull
-and nothing worse. Behaviours that would break a promise whoa makes — that the
-log never carries your code, that a Halt never ends your turn — are
-**Invariants** and are deliberately not configurable. See
-[ADR 0004](docs/adr/0004-parameters-and-invariants.md).
+and nothing worse. A test fails if a Parameter exists in the code and not in
+that table, so there is no undocumented knob.
+
+## Invariants
+
+These are not configurable, and each one has a reason. An Invariant without a
+reason reads as an oversight.
+
+| Invariant | Why |
+|---|---|
+| The Digest never carries file contents, source or paths | It is the whole promise. A setting to turn it off is a setting someone will turn off by accident, and the damage is not recoverable. |
+| Redaction degrades to the program name when a secret cannot be bounded | The alternative is a knob whose wrong setting leaks a key. The right move is picking the default correctly, not delegating the choice. |
+| The agent never sees a probability | It would argue with the number instead of reconsidering the work. The number is not evidence it can act on. |
+| Questions to the Judge are always English | The model is weaker in CJK. Asking in your language would quietly degrade the judgement while looking like a courtesy. Your Goal is stored and sent exactly as you wrote it. |
+| A Halt never ends your Turn | It denies one Step. The agent has to be able to rescue itself, and you should not have to restart anything because whoa was wrong. |
+| `progress` never affects a Verdict | It is a general impression, not a named failure mode. Acting on it would make "why did whoa just interrupt me?" unanswerable, and explicability is the precondition for leaving this installed. It is recorded for calibration. |
+
+See [ADR 0004](docs/adr/0004-parameters-and-invariants.md).
 
 ## When whoa gets it wrong
 
