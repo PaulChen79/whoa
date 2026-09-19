@@ -13,6 +13,8 @@ type Kind string
 const (
 	KindStep  Kind = "step"
 	KindNudge Kind = "nudge"
+	// KindGoal is a Substantive Instruction: what the user asked for.
+	KindGoal Kind = "goal"
 )
 
 // Outcome is how a Step ended.
@@ -33,12 +35,23 @@ const (
 // No field holds free text from the agent's work. No command text, no error
 // text, no file contents and no paths: those can carry secrets. Redaction is
 // what makes any of that admissible, and only in the forms Redaction produces.
+// The single exception is Goal, which is the user's own prompt: their words,
+// which they chose to write, about work they chose to ask for.
 type Entry struct {
 	Kind      Kind      `json:"kind"`
 	Timestamp time.Time `json:"ts"`
 	Harness   Harness   `json:"harness,omitempty"`
 	Session   string    `json:"session"`
 	Turn      string    `json:"turn,omitempty"`
+
+	// Goal is the user's own words. On a KindGoal Entry it is the Substantive
+	// Instruction itself; on a Step it is the Goal that was in force when the
+	// Step happened, so that one line can be read on its own.
+	//
+	// This is the one field that holds free text, and it is the user's text,
+	// never the agent's work: what they asked for, in the language they asked
+	// for it in. Nothing derived from a file, a command or an error goes here.
+	Goal string `json:"goal,omitempty"`
 
 	// Kind == KindStep.
 	Tool       string  `json:"tool,omitempty"`

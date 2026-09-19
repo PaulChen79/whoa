@@ -38,11 +38,18 @@ type hookEvent struct {
 // context before its next Step rather than after the one that earned it.
 var hookEvents = map[Harness][]hookEvent{
 	ClaudeCode: {
+		{Name: userPromptSubmit},
 		{Name: "PreToolUse"},
 		{Name: "PostToolUse", Records: OutcomeOK},
 		{Name: "PostToolUseFailure", Records: OutcomeError},
 	},
 }
+
+// userPromptSubmit is handled outside the per-Harness table because it is
+// genuinely the same event everywhere: both Harnesses fire it under this name
+// and carry the user's text in the same field. Duplicating it per Harness
+// would invite them to drift apart in code when they have not in fact.
+const userPromptSubmit = "UserPromptSubmit"
 
 // Events lists the hook events whoa must register for on a Harness, in the
 // order it registers them.
@@ -92,6 +99,7 @@ type hookPayload struct {
 	Event      string `json:"hook_event_name"`
 	ToolName   string `json:"tool_name"`
 	ToolUseID  string `json:"tool_use_id"`
+	Prompt     string `json:"prompt"`
 	AgentID    string `json:"agent_id"`
 	DurationMS int    `json:"duration_ms"`
 }
@@ -139,6 +147,15 @@ func Observe(in Input) Observation {
 		return Observation{}
 	}
 
+	// The user speaking is the one event that is not about a tool, so it is
+	// answered before anything asks which tool this was.
+	if p.Event == userPromptSubmit {
+		if p.SessionID == "" {
+			return Observation{}
+		}
+		return in.observeGoal(p)
+	}
+
 	event, ok := p.event(in.Harness)
 	if !ok {
 		return Observation{}
@@ -162,6 +179,7 @@ func Observe(in Input) Observation {
 		Tool:       p.ToolName,
 		ToolUseID:  p.ToolUseID,
 		AgentID:    p.AgentID,
+		Goal:       goalInForce(in.Log),
 		Outcome:    event.Records,
 		DurationMS: p.DurationMS,
 	}}
