@@ -13,7 +13,8 @@
 // the core without the core needing an injected interface.
 //
 // Input is the *raw* payload rather than a normalised Step on purpose. The
-// differences between Claude Code and Codex (tool_result versus tool_response,
-// whether PostToolUse can block, prompt_id versus turn_id) are then covered by
-// tests that go through this seam, instead of needing a seam of their own.
+// differences between Claude Code and Codex (which events fire, which field
+// carries the turn key, whether the post-tool event can block) are then
+// covered by tests that go through this seam, instead of needing a seam of
+// their own.
 package core

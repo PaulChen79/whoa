@@ -10,6 +10,10 @@ whoa watches what a coding agent does and steps in when it loops, drifts off goa
 One tool call. The smallest unit whoa observes.
 _Avoid_: action, call, iteration
 
+**Outcome**:
+How a Step ended: it either succeeded or it failed. Carries no error text.
+_Avoid_: status, result, exit code
+
 **Turn**:
 The period from one Substantive Instruction until the agent stops and waits. The main unit whoa reasons over.
 _Avoid_: request, prompt, exchange

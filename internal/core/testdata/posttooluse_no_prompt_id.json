@@ -1,0 +1,9 @@
+{
+  "session_id": "abc123",
+  "cwd": "/Users/u/proj",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Read",
+  "tool_input": { "file_path": "/a.txt" },
+  "tool_response": {},
+  "tool_use_id": "toolu_01NOPROMPT"
+}
