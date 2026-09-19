@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -77,6 +78,8 @@ func run(args []string, s system) error {
 		return hook(s, harnessFrom(args[1:]))
 	case "install":
 		return installCmd(s)
+	case "judge":
+		return judgeCmd(s, args[1:])
 	case "digest":
 		return digestCmd(s, args[1:])
 	case "wrong":
@@ -152,12 +155,26 @@ func hook(s system, harness core.Harness) error {
 	}
 
 	ob := core.Observe(core.Input{
-		Raw:     raw,
-		Harness: harness,
-		Log:     log,
-		Config:  cfg,
-		Now:     s.now(),
+		Raw:            raw,
+		Harness:        harness,
+		Log:            log,
+		Config:         cfg,
+		Now:            s.now(),
+		JudgeAvailable: apiKey() != "",
 	})
+
+	if ob.Problem != "" {
+		warn(s, errors.New(ob.Problem))
+	}
+	if ob.AskJudge {
+		askJudge(s, core.SessionID(raw))
+	}
+	if ob.Notice != nil {
+		ob.Notice.Session = core.SessionID(raw)
+		if err := store.Append(cfg.StateDir, ob.Notice); err != nil {
+			warn(s, err)
+		}
+	}
 
 	if len(ob.Output) > 0 {
 		if _, err := s.stdout.Write(append(ob.Output, '\n')); err != nil {

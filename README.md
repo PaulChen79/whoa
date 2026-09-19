@@ -104,7 +104,30 @@ you leave out keeps its default. A missing file is not an error.
 }
 ```
 
-### Parameters
+### The Judge
+
+Outside Counter-only Mode, whoa asks [Jev](https://typesafe.ai) five fixed
+questions about the Digest and records the answers as a Verdict. Set a key:
+
+```sh
+export WHOA_JEV_API_KEY=...
+```
+
+Without one, whoa degrades to Counters and says so once per Session. Set
+`on_missing_key` to `"error"` if you would rather be told plainly that you are
+unprotected. Degrading never makes whoa louder than the Mode you chose: Shadow
+Mode without a key watches nothing and stays silent.
+
+The call runs in a detached process. No Step ever waits for it.
+
+**The wire format is unverified.** This project has never held a Jev key, so
+the request shape follows the published description of the primitives rather
+than a schema anyone has exercised against the live service. `whoa digest`
+prints exactly what would be sent so you can check it against your own account
+before trusting it. A mismatch degrades that Step to Counters; it does not
+break the tool.
+
+## Parameters
 
 | Key | Default | What it does |
 | --- | --- | --- |
@@ -118,7 +141,7 @@ you leave out keeps its default. A missing file is not an error.
 | `halt_enabled` | `true` | Whether whoa may block a Step at all. `false` leaves it able only to Nudge. |
 | `ineffective_nudges_before_halt` | `3` | How many Nudges may be ignored before whoa escalates to a Halt. |
 | `notify` | `true` | Whether whoa prints its one-line explanation to you. `false` leaves the agent nudged and you unbothered. |
-| `model` | `"jev-latest"` | Which Jev model judges. |
+| `model` | `"jev-1.13.0"` | Which Jev model judges. Pinned, not floating: Verdicts are calibration data, and a model that changes underneath a corpus makes it incomparable. |
 | `state_dir` | `~/.whoa` | Where the Session logs and this config live. `~` is expanded. |
 | `retention_days` | `14` | How long Session logs are kept. `0` keeps them forever. |
 | `on_missing_key` | `"degrade"` | With no API key, `degrade` falls back to Counter-only Mode; `error` tells you that you are unprotected. |

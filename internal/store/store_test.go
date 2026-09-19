@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -251,7 +252,7 @@ func TestAPersistedLogReplaysToTheIdenticalVerdict(t *testing.T) {
 	if fromDisk.Human != inMemory.Human {
 		t.Errorf("human line from disk = %q, want %q", fromDisk.Human, inMemory.Human)
 	}
-	if *fromDisk.Entry != *inMemory.Entry {
+	if !reflect.DeepEqual(fromDisk.Entry, inMemory.Entry) {
 		t.Errorf("recorded Entry from disk = %+v, want %+v", *fromDisk.Entry, *inMemory.Entry)
 	}
 }

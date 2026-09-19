@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -219,7 +220,7 @@ func TestDefaultsMatchTheDocumentedParameters(t *testing.T) {
 		{"halt_enabled", d.HaltEnabled, true},
 		{"ineffective_nudges_before_halt", d.IneffectiveNudgesBeforeHalt, 3},
 		{"notify", d.Notify, true},
-		{"model", d.Model, "jev-latest"},
+		{"model", d.Model, "jev-1.13.0"},
 		{"retention_days", d.RetentionDays, 14},
 		{"on_missing_key", d.OnMissingKey, OnMissingKeyDegrade},
 	}
@@ -342,8 +343,93 @@ func TestReplayingALogReproducesTheIdenticalVerdict(t *testing.T) {
 		if (got.Entry == nil) != (first.Entry == nil) {
 			t.Fatalf("replay %d disagreed about whether to record an Entry", i)
 		}
-		if got.Entry != nil && *got.Entry != *first.Entry {
+		if got.Entry != nil && !reflect.DeepEqual(got.Entry, first.Entry) {
 			t.Fatalf("replay %d entry = %+v, want %+v", i, *got.Entry, *first.Entry)
 		}
+	}
+}
+
+func TestShadowModeStaysSilentWithoutAKey(t *testing.T) {
+	// Degrading must never make whoa louder than the Mode asked for. Someone
+	// running Shadow Mode chose to be watched in silence; losing the key is
+	// no reason to start talking to their agent.
+	cfg := nudgeConfig()
+	cfg.Mode = ModeShadow
+
+	log := failures(3)
+	ob := Observe(Input{
+		Raw: preToolUse("s"), Harness: ClaudeCode,
+		Log: log, Config: cfg, Now: time.Unix(0, 0), JudgeAvailable: false,
+	})
+
+	if len(ob.Output) != 0 || ob.Human != "" || ob.Entry != nil {
+		t.Fatalf("Shadow Mode spoke after losing its key: output=%q human=%q", ob.Output, ob.Human)
+	}
+	if ob.AskJudge {
+		t.Error("asked a Judge it has no key for")
+	}
+	if ob.Notice == nil || ob.Notice.Fact != NoKeyNotice {
+		t.Error("said nothing at all: the person is owed one line saying they are unprotected")
+	}
+}
+
+func TestFullModeFallsBackToCountersWithoutAKey(t *testing.T) {
+	cfg := nudgeConfig()
+	cfg.Mode = ModeFull
+
+	log := failures(3)
+	ob := Observe(Input{
+		Raw: preToolUse("s"), Harness: ClaudeCode,
+		Log: log, Config: cfg, Now: time.Unix(0, 0), JudgeAvailable: false,
+	})
+
+	if ob.Entry == nil || ob.Entry.Kind != KindNudge {
+		t.Fatal("Full Mode went quiet instead of falling back to Counters")
+	}
+	if !strings.Contains(ob.Human, "no Judge API key") {
+		t.Errorf("did not say why it was running on Counters: %q", ob.Human)
+	}
+	if ob.Notice == nil {
+		t.Error("nothing recorded, so the next Step would say it all again")
+	}
+}
+
+func TestTheMissingKeyIsMentionedOnlyOnce(t *testing.T) {
+	cfg := nudgeConfig()
+	cfg.Mode = ModeFull
+
+	log := append([]Entry{{Kind: KindNotice, Fact: NoKeyNotice}}, failures(3)...)
+	ob := Observe(Input{
+		Raw: preToolUse("s"), Harness: ClaudeCode,
+		Log: log, Config: cfg, Now: time.Unix(0, 0), JudgeAvailable: false,
+	})
+
+	if ob.Notice != nil {
+		t.Error("recorded the notice twice")
+	}
+	if strings.Contains(ob.Human, "no Judge API key") {
+		t.Errorf("repeated itself to the person: %q", ob.Human)
+	}
+	if ob.Entry == nil {
+		t.Error("stopped Nudging as well, which is not what degrading means")
+	}
+}
+
+func TestOnMissingKeyErrorRefusesToPretend(t *testing.T) {
+	cfg := nudgeConfig()
+	cfg.Mode = ModeFull
+	cfg.OnMissingKey = OnMissingKeyError
+
+	log := failures(3)
+	ob := Observe(Input{
+		Raw: preToolUse("s"), Harness: ClaudeCode,
+		Log: log, Config: cfg, Now: time.Unix(0, 0), JudgeAvailable: false,
+	})
+
+	if ob.Problem == "" {
+		t.Fatal("on_missing_key=error stayed silent, which is the one thing it promises not to do")
+	}
+	if ob.Entry != nil || len(ob.Output) != 0 {
+		t.Error("intervened anyway")
 	}
 }

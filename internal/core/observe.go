@@ -109,6 +109,10 @@ type Input struct {
 	Log    []Entry
 	Config Config
 	Now    time.Time
+	// JudgeAvailable says a Judge API key is configured. Whether one exists
+	// is I/O, so the shell answers it; what to do about its absence is a
+	// decision, so the core makes that.
+	JudgeAvailable bool
 }
 
 // Observation is what the core tells the caller to do: what to append to the
@@ -123,6 +127,18 @@ type Observation struct {
 	// Human is the one line for the person watching, empty when there is
 	// nothing to say or when notify is off.
 	Human string
+	// AskJudge says the Trigger fired and the Mode wants a Verdict from the
+	// Judge. The core cannot make that call — it is network I/O — so it says
+	// so and the shell arranges it, off the critical path.
+	AskJudge bool
+	// Notice is whoa recording something about itself, alongside whatever
+	// else this Observation does. It exists because degrading for want of a
+	// key has to be said exactly once, and "once" only survives this process
+	// exiting if it is written down.
+	Notice *Entry
+	// Problem is whoa's own trouble, for the shell to report. It is a string
+	// rather than an error so that an Observation stays a plain value.
+	Problem string
 }
 
 // hookPayload is the subset of a Harness hook payload whoa reads. Fields it

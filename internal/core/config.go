@@ -60,6 +60,15 @@ type Config struct {
 	OnMissingKey                string  `json:"on_missing_key"`
 }
 
+// DefaultModel is pinned rather than floating.
+//
+// Verdicts are calibration data: the whole point of Shadow Mode is to collect
+// a corpus and measure how often whoa is wrong. A floating alias would swap
+// the model underneath that corpus and quietly make yesterday's labels
+// incomparable with today's. Someone who would rather track the newest model
+// can set "jev-latest" and accept that.
+const DefaultModel = "jev-1.13.0"
+
 // Defaults is whoa as it behaves before anyone configures it.
 //
 // The trigger defaults are deliberately unadventurous. A Misjudgment gets
@@ -79,7 +88,7 @@ func Defaults() Config {
 		HaltEnabled:                 true,
 		IneffectiveNudgesBeforeHalt: 3,
 		Notify:                      true,
-		Model:                       "jev-latest",
+		Model:                       DefaultModel,
 		RetentionDays:               14,
 		OnMissingKey:                OnMissingKeyDegrade,
 	}

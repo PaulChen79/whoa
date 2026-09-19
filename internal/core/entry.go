@@ -23,6 +23,12 @@ const (
 	// not right. It is the only entry a person writes, and the reason the
 	// calibration corpus is a by-product of using whoa rather than a chore.
 	KindWrong Kind = "wrong"
+	// KindVerdict is what the Judge said. In Shadow Mode it is all whoa does.
+	KindVerdict Kind = "verdict"
+	// KindNotice is whoa saying something about itself: that it has degraded,
+	// and why. It lives in the log so that "tell the user once" can be
+	// answered from the same evidence as everything else.
+	KindNotice Kind = "notice"
 )
 
 // Outcome is how a Step ended.
@@ -87,6 +93,19 @@ type Entry struct {
 	Signals    *redact.Signals  `json:"signals,omitempty"`
 	Outcome    Outcome          `json:"outcome,omitempty"`
 	DurationMS int              `json:"duration_ms,omitempty"`
+
+	// Kind == KindVerdict: what the Judge answered, by question key, and
+	// which Judge answered it.
+	//
+	// The Digest that produced this is not copied here. It is a pure function
+	// of the log above this line, so Ref plus the log reconstructs it exactly,
+	// and a copy could only introduce a version that disagrees with the
+	// evidence it claims to be.
+	Probabilities map[string]float64 `json:"probabilities,omitempty"`
+	// Scores are the Judge's Score answers, kept apart from Probabilities
+	// because a score on a legend is not a probability.
+	Scores map[string]float64 `json:"scores,omitempty"`
+	Model  string             `json:"model,omitempty"`
 
 	// Kind == KindNudge: the Counter fact that fired, kept so that a Nudge can
 	// be replayed, argued with, and marked as a Misjudgment later.

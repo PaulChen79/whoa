@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // fired is the one Counter that crossed its threshold, and the sentence a
@@ -52,16 +53,26 @@ func reached(count, threshold int) bool { return threshold > 0 && count >= thres
 // previous Step, so that the Nudge lands in the agent's context before it
 // acts again instead of after the Step that earned it.
 func (in Input) intervene(p hookPayload) Observation {
-	if in.Config.Mode != ModeCounters {
-		// Shadow Mode never intervenes, and full mode's Verdict comes from the
-		// Judge rather than from Counters alone.
-		return Observation{}
-	}
-
 	counters := Count(in.Log, in.Config.Window)
 	f, ok := in.Config.Trigger.fires(counters)
 	if !ok || !worthSaying(in.Log, f) {
 		return Observation{}
+	}
+
+	pl := in.plan()
+	if pl.problem != "" {
+		return Observation{Problem: pl.problem}
+	}
+	// Outside Counter-only Mode the Trigger asks the Judge rather than
+	// speaking for itself. In Shadow Mode that is the whole of what happens:
+	// the Judge is asked, the answer is written down, and the agent is left
+	// entirely alone. That is what makes the recorded Verdicts worth anything
+	// as calibration data — nothing whoa did can have changed them.
+	if pl.ask {
+		return Observation{AskJudge: true}
+	}
+	if !pl.speak {
+		return Observation{Notice: pl.notice}
 	}
 
 	entry := &Entry{
@@ -80,7 +91,61 @@ func (in Input) intervene(p hookPayload) Observation {
 	if in.Config.Notify {
 		human = fmt.Sprintf("whoa: %s — nudged the agent to reconsider.", f.Fact)
 	}
-	return Observation{Entry: entry, Output: nudgeOutput(f, human), Human: human}
+	if pl.notice != nil {
+		human = strings.TrimSpace(human + " " + noKeyLine)
+	}
+	return Observation{Entry: entry, Output: nudgeOutput(f, human), Human: human, Notice: pl.notice}
+}
+
+// noKeyLine is what the person is told, once, when whoa wanted the Judge and
+// had no key.
+const noKeyLine = "whoa has no Judge API key, so it is running on Counters alone. " +
+	"Set WHOA_JEV_API_KEY, or set mode to \"counters\" to stop seeing this."
+
+// NoKeyNotice is the Fact recorded when whoa degrades for want of a key.
+const NoKeyNotice = "no Judge API key configured"
+
+// plan is what whoa will do about a Trigger that has fired: speak from
+// Counters alone, ask the Judge, or neither.
+type plan struct {
+	speak   bool
+	ask     bool
+	notice  *Entry
+	problem string
+}
+
+// plan resolves those three, given whether a Judge key exists.
+//
+// Both answers to a missing key are legitimate and the difference matters to
+// real people. On a plane, with an expired key, or out of quota, some want a
+// tool that keeps working and some want to be told plainly that they are not
+// protected. Degrading is the default because a stop-loss that stops at the
+// first inconvenience protects nobody.
+//
+// Degrading never makes whoa louder than the Mode asked for. Shadow Mode was
+// chosen to watch in silence, so without a key it watches nothing and stays
+// silent; it does not fall back to Nudging. Only Full Mode, which was already
+// willing to speak, falls back to speaking from Counters.
+//
+// The notice is produced only when something would otherwise have happened, so
+// whoa does not nag about a key during a Session where nothing went wrong.
+func (in Input) plan() plan {
+	switch {
+	case in.Config.Mode == ModeCounters:
+		return plan{speak: true}
+	case in.JudgeAvailable:
+		return plan{ask: true}
+	case in.Config.OnMissingKey == OnMissingKeyError:
+		return plan{problem: NoKeyNotice + `, and on_missing_key is "error": this Step was not judged`}
+	}
+	p := plan{speak: in.Config.Mode == ModeFull}
+	for _, e := range in.Log {
+		if e.Kind == KindNotice && e.Fact == NoKeyNotice {
+			return p
+		}
+	}
+	p.notice = &Entry{Kind: KindNotice, Timestamp: in.Now.UTC(), Harness: in.Harness, Fact: NoKeyNotice}
+	return p
 }
 
 // worthSaying decides whether this Nudge tells the agent anything it has not
