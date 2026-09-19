@@ -31,6 +31,7 @@ Usage:
   whoa doctor      check whoa is actually running, per Harness
   whoa wrong       mark the last thing whoa said as a Misjudgment
   whoa digest      print exactly what would be sent to the Judge, and send nothing
+  whoa calibrate   report how often whoa has been wrong
   whoa hook        observe one Step (invoked by the Harness, reads stdin)
   whoa version     print the version
 `
@@ -84,6 +85,8 @@ func run(args []string, s system) error {
 		return digestCmd(s, args[1:])
 	case "wrong":
 		return wrongCmd(s)
+	case "calibrate":
+		return calibrateCmd(s)
 	case "doctor":
 		return doctorCmd(s)
 	case "uninstall":

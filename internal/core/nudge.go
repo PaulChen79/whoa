@@ -69,6 +69,12 @@ func (in Input) intervene(p hookPayload) Observation {
 	// entirely alone. That is what makes the recorded Verdicts worth anything
 	// as calibration data — nothing whoa did can have changed them.
 	if pl.ask {
+		// A Verdict already in hand is acted on before another is asked
+		// for: the Judge answers asynchronously, so the answer to the last
+		// Trigger arrives during a later Step, and this is where it lands.
+		if ob := in.fromVerdict(); ob.Entry != nil {
+			return ob
+		}
 		return Observation{AskJudge: true}
 	}
 	if !pl.speak {
@@ -200,21 +206,26 @@ func stepsAfter(entries []Entry, at int) int {
 // It states the fact and never a probability: a number invites the agent to
 // argue with the number rather than reconsider what it is doing.
 func nudgeOutput(f fired, human string) []byte {
-	context := fmt.Sprintf(
+	return contextOutput(fmt.Sprintf(
 		"whoa: %s. This looks like the same approach being retried rather than a new one. "+
 			"Stop and consider whether the obstacle is what you think it is, "+
 			"or say what you are stuck on instead of trying again.",
 		f.Fact,
-	)
+	), human)
+}
+
+// contextOutput is the one place a Nudge becomes hook output.
+//
+// The agent's text and the person's are separate fields because they are
+// deliberately different: from a Judge, the person's copy carries the
+// probability and the agent's never does.
+func contextOutput(context, human string) []byte {
 	out, err := json.Marshal(hookOutput{
 		HookSpecificOutput: preToolUseOutput{
 			HookEventName:     "PreToolUse",
 			AdditionalContext: context,
 		},
 		// systemMessage is the documented way to reach the person watching.
-		// They get the same fact, but it is a separate field so that what the
-		// agent reads and what the human reads can differ: from a Judge, the
-		// human's copy carries the probability and the agent's never does.
 		SystemMessage: human,
 	})
 	if err != nil {

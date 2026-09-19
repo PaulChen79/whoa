@@ -148,3 +148,26 @@ func Load(stateDir, session string) ([]core.Entry, error) {
 	}
 	return entries, nil
 }
+
+// Sessions lists the Session ids that have logs, in no particular order.
+//
+// It is the one place that knows how logs are laid out on disk. Retention,
+// `whoa wrong` and `whoa calibrate` all need to walk them, and three copies
+// of the same glob is three places to forget when the layout changes.
+func Sessions(stateDir string) ([]string, error) {
+	logs, err := sessionLogs(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(logs))
+	for _, path := range logs {
+		ids = append(ids, strings.TrimSuffix(filepath.Base(path), ".jsonl"))
+	}
+	return ids, nil
+}
+
+// sessionLogs lists the log files themselves, for the one caller that works
+// on paths rather than ids: expiry, which deletes them.
+func sessionLogs(stateDir string) ([]string, error) {
+	return filepath.Glob(filepath.Join(stateDir, "sessions", "*.jsonl"))
+}

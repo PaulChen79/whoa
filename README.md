@@ -127,6 +127,27 @@ prints exactly what would be sent so you can check it against your own account
 before trusting it. A mismatch degrades that Step to Counters; it does not
 break the tool.
 
+## Is it any good?
+
+Nobody knows yet, including the author. whoa's judgement is unproven, so it
+ships with the means to check it rather than a claim:
+
+```sh
+whoa wrong       # the last thing whoa said was wrong
+whoa calibrate   # how often has it been wrong?
+```
+
+`calibrate` reports the false positive rate over every Nudge-level Verdict you
+have labelled, against the release gate: **50 samples, at most 20% false
+positives**. It exits non-zero until that is met. Fifty is nowhere near
+statistically significant; it is enough to catch "this does not work at all",
+which is the only question v0 has to answer.
+
+Precision is what matters here and recall is not. A Misjudgment gets whoa
+uninstalled. A miss just leaves you where you already were.
+
+Logs holding a Misjudgment are never expired, whatever `retention_days` says.
+
 ## Parameters
 
 | Key | Default | What it does |

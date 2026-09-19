@@ -1,11 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/PaulChen79/whoa/internal/config"
 	"github.com/PaulChen79/whoa/internal/core"
@@ -78,7 +75,7 @@ type verdictRef struct {
 // from "you have already marked everything it said". Those reach here as the
 // same outcome and deserve very different sentences.
 func lastVerdict(stateDir string) (verdictRef, int, error) {
-	logs, err := filepath.Glob(filepath.Join(stateDir, "sessions", "*.jsonl"))
+	sessions, err := store.Sessions(stateDir)
 	if err != nil {
 		return verdictRef{}, 0, err
 	}
@@ -87,24 +84,16 @@ func lastVerdict(stateDir string) (verdictRef, int, error) {
 		best  verdictRef
 		total int
 	)
-	for _, path := range logs {
-		raw, err := os.ReadFile(path)
+	for _, session := range sessions {
+		log, err := store.Load(stateDir, session)
 		if err != nil {
 			continue
 		}
 		var (
 			verdicts []verdictRef
 			marked   = map[int]bool{}
-			session  = strings.TrimSuffix(filepath.Base(path), ".jsonl")
 		)
-		for i, text := range strings.Split(strings.TrimRight(string(raw), "\n"), "\n") {
-			if text == "" {
-				continue
-			}
-			var e core.Entry
-			if json.Unmarshal([]byte(text), &e) != nil {
-				continue
-			}
+		for i, e := range log {
 			switch {
 			case e.Kind == core.KindWrong && e.Ref > 0:
 				marked[e.Ref] = true

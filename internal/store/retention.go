@@ -55,7 +55,7 @@ func Expire(stateDir string, days int) (int, error) {
 	if days <= 0 {
 		return 0, nil
 	}
-	logs, err := filepath.Glob(filepath.Join(stateDir, "sessions", "*.jsonl"))
+	logs, err := sessionLogs(stateDir)
 	if err != nil {
 		return 0, err
 	}
