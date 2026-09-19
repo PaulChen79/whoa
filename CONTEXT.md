@@ -52,6 +52,10 @@ _Avoid_: cheating, shortcut, gaming
 
 ### Evidence and judgement
 
+**Session log**:
+The ordered record of one Session: every Step whoa observed and every intervention it made. The only thing a Verdict can be replayed against.
+_Avoid_: history, trace, audit log
+
 **Counter**:
 A deterministic fact code computes from the sequence of Steps. Carries no probability.
 _Avoid_: metric, stat, heuristic

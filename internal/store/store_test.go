@@ -11,8 +11,9 @@ import (
 	"github.com/PaulChen79/whoa/internal/core"
 )
 
-func step(session string) *core.Step {
-	return &core.Step{
+func step(session string) *core.Entry {
+	return &core.Entry{
+		Kind:      core.KindStep,
 		Timestamp: time.Date(2026, 9, 19, 10, 0, 0, 0, time.UTC),
 		Harness:   core.ClaudeCode,
 		Session:   session,
@@ -38,7 +39,7 @@ func TestAppendWritesOneLinePerStep(t *testing.T) {
 		t.Fatalf("got %d lines, want 3:\n%s", len(lines), b)
 	}
 	for i, line := range lines {
-		var s core.Step
+		var s core.Entry
 		if err := json.Unmarshal([]byte(line), &s); err != nil {
 			t.Errorf("line %d is not valid JSON: %v", i, err)
 		}
@@ -126,5 +127,78 @@ func TestLogIsNotWorldReadable(t *testing.T) {
 	}
 	if perm := fi.Mode().Perm(); perm&0o077 != 0 {
 		t.Errorf("log mode is %o, want no group or other access", perm)
+	}
+}
+
+func TestLoadReturnsWhatAppendWrote(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 3; i++ {
+		if err := Append(dir, step("s1")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, err := Load(dir, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("Load() returned %d entries, want 3", len(entries))
+	}
+	if !entries[0].IsStep() || entries[0].Tool != step("s1").Tool {
+		t.Errorf("Load() = %+v, want the Step that was appended", entries[0])
+	}
+}
+
+// The first Step of a Session is observed before any log exists.
+func TestLoadingAMissingLogIsAnEmptySession(t *testing.T) {
+	entries, err := Load(t.TempDir(), "never-seen")
+	if err != nil {
+		t.Fatalf("Load() on a missing log: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("Load() = %v, want nothing", entries)
+	}
+}
+
+// A log truncated by a crash mid-write must cost one Step's evidence, not the
+// rest of the Session.
+func TestLoadSkipsALineItCannotParse(t *testing.T) {
+	dir := t.TempDir()
+	if err := Append(dir, step("s1")); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "sessions", "s1.jsonl")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("{\"kind\":\"step\",\"tool\":\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if err := Append(dir, step("s1")); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := Load(dir, "s1")
+	if err != nil {
+		t.Fatalf("Load() over a truncated line: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("Load() returned %d entries, want the two intact ones", len(entries))
+	}
+}
+
+func TestLoadRejectsASessionIDThatCouldEscapeTheStateDir(t *testing.T) {
+	if _, err := Load(t.TempDir(), "../../etc/passwd"); err == nil {
+		t.Error("Load() accepted a session id containing a path traversal")
+	}
+}
+
+func TestAppendRefusesAnEntryWithNoKind(t *testing.T) {
+	e := step("s1")
+	e.Kind = ""
+	if err := Append(t.TempDir(), e); err == nil {
+		t.Error("Append() wrote an entry with no kind")
 	}
 }

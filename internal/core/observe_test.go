@@ -28,22 +28,22 @@ func observe(t *testing.T, name string) Observation {
 func TestSuccessfulStepIsRecorded(t *testing.T) {
 	ob := observe(t, "posttooluse_write")
 
-	if ob.Step == nil {
+	if ob.Entry == nil {
 		t.Fatal("expected a Step to record")
 	}
-	if got, want := ob.Step.Tool, "Write"; got != want {
+	if got, want := ob.Entry.Tool, "Write"; got != want {
 		t.Errorf("Tool = %q, want %q", got, want)
 	}
-	if got, want := ob.Step.Turn, "550e8400-e29b-41d4-a716-446655440000"; got != want {
+	if got, want := ob.Entry.Turn, "550e8400-e29b-41d4-a716-446655440000"; got != want {
 		t.Errorf("Turn = %q, want %q", got, want)
 	}
-	if got, want := ob.Step.Session, "abc123"; got != want {
+	if got, want := ob.Entry.Session, "abc123"; got != want {
 		t.Errorf("Session = %q, want %q", got, want)
 	}
-	if got, want := ob.Step.Outcome, OutcomeOK; got != want {
+	if got, want := ob.Entry.Outcome, OutcomeOK; got != want {
 		t.Errorf("Outcome = %q, want %q", got, want)
 	}
-	if got, want := ob.Step.DurationMS, 12; got != want {
+	if got, want := ob.Entry.DurationMS, 12; got != want {
 		t.Errorf("DurationMS = %d, want %d", got, want)
 	}
 }
@@ -51,13 +51,13 @@ func TestSuccessfulStepIsRecorded(t *testing.T) {
 func TestFailedStepIsRecordedAsAFailure(t *testing.T) {
 	ob := observe(t, "posttoolusefailure_bash")
 
-	if ob.Step == nil {
+	if ob.Entry == nil {
 		t.Fatal("expected a Step to record")
 	}
-	if got, want := ob.Step.Outcome, OutcomeError; got != want {
+	if got, want := ob.Entry.Outcome, OutcomeError; got != want {
 		t.Errorf("Outcome = %q, want %q", got, want)
 	}
-	if got, want := ob.Step.Tool, "Bash"; got != want {
+	if got, want := ob.Entry.Tool, "Bash"; got != want {
 		t.Errorf("Tool = %q, want %q", got, want)
 	}
 }
@@ -66,7 +66,7 @@ func TestFailedStepIsRecordedAsAFailure(t *testing.T) {
 // on a separate event must not leave whoa blind to them.
 func TestFailuresAndSuccessesAreBothObserved(t *testing.T) {
 	for _, name := range []string{"posttooluse_write", "posttoolusefailure_bash"} {
-		if ob := observe(t, name); ob.Step == nil {
+		if ob := observe(t, name); ob.Entry == nil {
 			t.Errorf("%s: expected a Step to record", name)
 		}
 	}
@@ -75,10 +75,10 @@ func TestFailuresAndSuccessesAreBothObserved(t *testing.T) {
 func TestSubagentStepRecordsWhichAgentTookIt(t *testing.T) {
 	ob := observe(t, "posttooluse_subagent")
 
-	if ob.Step == nil {
+	if ob.Entry == nil {
 		t.Fatal("expected a Step to record")
 	}
-	if got, want := ob.Step.AgentID, "agent_01"; got != want {
+	if got, want := ob.Entry.AgentID, "agent_01"; got != want {
 		t.Errorf("AgentID = %q, want %q", got, want)
 	}
 }
@@ -86,11 +86,11 @@ func TestSubagentStepRecordsWhichAgentTookIt(t *testing.T) {
 func TestMissingTurnKeyIsNotAnError(t *testing.T) {
 	ob := observe(t, "posttooluse_no_prompt_id")
 
-	if ob.Step == nil {
+	if ob.Entry == nil {
 		t.Fatal("a Step before the first user prompt is still a Step")
 	}
-	if ob.Step.Turn != "" {
-		t.Errorf("Turn = %q, want empty", ob.Step.Turn)
+	if ob.Entry.Turn != "" {
+		t.Errorf("Turn = %q, want empty", ob.Entry.Turn)
 	}
 }
 
@@ -117,7 +117,7 @@ func TestMalformedPayloadIsSilentlyIgnored(t *testing.T) {
 		"unknown event": `{"session_id":"abc","hook_event_name":"SessionStart"}`,
 	} {
 		ob := Observe(Input{Raw: []byte(raw), Harness: ClaudeCode, Now: at})
-		if ob.Step != nil {
+		if ob.Entry != nil {
 			t.Errorf("%s: recorded a Step, want none", name)
 		}
 		if len(ob.Output) != 0 {
@@ -130,10 +130,10 @@ func TestMalformedPayloadIsSilentlyIgnored(t *testing.T) {
 // can carry secrets, and Redaction does not exist yet.
 func TestRecordedStepCarriesNoFreeText(t *testing.T) {
 	ob := observe(t, "posttoolusefailure_bash")
-	if ob.Step == nil {
+	if ob.Entry == nil {
 		t.Fatal("expected a Step to record")
 	}
-	line, err := json.Marshal(ob.Step)
+	line, err := json.Marshal(ob.Entry)
 	if err != nil {
 		t.Fatalf("marshalling Step: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestRecordedStepCarriesNoFreeText(t *testing.T) {
 
 func TestStepIsOneJSONLine(t *testing.T) {
 	ob := observe(t, "posttooluse_write")
-	line, err := json.Marshal(ob.Step)
+	line, err := json.Marshal(ob.Entry)
 	if err != nil {
 		t.Fatalf("marshalling Step: %v", err)
 	}
@@ -155,23 +155,24 @@ func TestStepIsOneJSONLine(t *testing.T) {
 	}
 }
 
-// Install registers whatever the core says it observes, so the two can never
-// drift apart into a Harness whose failures are never seen.
-func TestEventsCoverBothOutcomes(t *testing.T) {
+// Install registers whatever the core says it handles, so the two can never
+// drift apart into a Harness whose failures are never seen, or a Nudge with no
+// event to be delivered on.
+func TestEventsCoverBothOutcomesAndTheNudgeChannel(t *testing.T) {
 	events := Events(ClaudeCode)
-	if len(events) != 2 {
-		t.Fatalf("Events(ClaudeCode) = %v, want two events", events)
-	}
 	seen := map[Outcome]bool{}
 	for _, name := range events {
-		outcome, ok := hookPayload{Event: name}.outcome(ClaudeCode)
+		event, ok := hookPayload{Event: name}.event(ClaudeCode)
 		if !ok {
-			t.Errorf("registered %q but do not observe it", name)
+			t.Errorf("registered %q but do not handle it", name)
 		}
-		seen[outcome] = true
+		seen[event.Records] = true
 	}
 	if !seen[OutcomeOK] || !seen[OutcomeError] {
 		t.Errorf("events cover %v, want both ok and error", seen)
+	}
+	if !seen[""] {
+		t.Error("no event fires before a Step, so a Nudge has no way to reach the agent")
 	}
 }
 
@@ -182,7 +183,7 @@ func TestUnknownHarnessObservesNothing(t *testing.T) {
 		t.Errorf("Events(nope) = %v, want none", got)
 	}
 	ob := Observe(Input{Raw: payload(t, "posttooluse_write"), Harness: "nope", Now: at})
-	if ob.Step != nil {
-		t.Errorf("recorded a Step for an unknown Harness: %+v", ob.Step)
+	if ob.Entry != nil {
+		t.Errorf("recorded a Step for an unknown Harness: %+v", ob.Entry)
 	}
 }

@@ -104,12 +104,34 @@ func TestInstallKeepsOtherToolsHooks(t *testing.T) {
 	if _, err := Install(p, bin); err != nil {
 		t.Fatal(err)
 	}
+	// whoa now registers a PreToolUse hook of its own for the Nudge, so it
+	// joins the event rather than being absent from it. What must survive is
+	// the handler that was already there.
 	h := hookEvents(t, p)
-	if len(h["PreToolUse"]) != 1 {
-		t.Fatalf("PreToolUse groups = %d, want 1", len(h["PreToolUse"]))
+	if len(h["PreToolUse"]) != 2 {
+		t.Fatalf("PreToolUse groups = %d, want whoa's alongside the existing one", len(h["PreToolUse"]))
 	}
 	if !strings.Contains(read(t, p), "rtk-rewrite") {
 		t.Error("install dropped another tool's hook")
+	}
+}
+
+// Uninstall must leave the other tool's PreToolUse hook exactly as it found it.
+func TestUninstallLeavesOtherToolsPreToolUseHookAlone(t *testing.T) {
+	before := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"rtk-rewrite"}]}]}}`
+	p := write(t, before)
+	if _, err := Install(p, bin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Uninstall(p); err != nil {
+		t.Fatal(err)
+	}
+	h := hookEvents(t, p)
+	if len(h["PreToolUse"]) != 1 {
+		t.Fatalf("PreToolUse groups after uninstall = %d, want 1", len(h["PreToolUse"]))
+	}
+	if !strings.Contains(read(t, p), "rtk-rewrite") {
+		t.Error("uninstall removed another tool's hook")
 	}
 }
 

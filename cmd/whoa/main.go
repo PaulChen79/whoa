@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/PaulChen79/whoa/internal/config"
 	"github.com/PaulChen79/whoa/internal/core"
 	"github.com/PaulChen79/whoa/internal/install"
 	"github.com/PaulChen79/whoa/internal/store"
@@ -98,15 +99,38 @@ func hook(s system) error {
 		warn(s, err)
 		return nil
 	}
+
+	cfg, err := config.Load(s.home)
+	if err != nil {
+		// Reported, then carried on with the defaults. A broken config file
+		// must be visible, but it must not be the reason whoa stops watching.
+		warn(s, err)
+	}
+
+	// The Session id decides which log to read, and it is in the payload, so
+	// the core is asked for it before it is asked to decide.
+	log, err := store.Load(cfg.StateDir, core.SessionID(raw))
+	if err != nil {
+		warn(s, err)
+	}
+
 	ob := core.Observe(core.Input{
 		Raw:     raw,
 		Harness: core.ClaudeCode,
+		Log:     log,
+		Config:  cfg,
 		Now:     s.now(),
 	})
-	if ob.Step == nil {
+
+	if len(ob.Output) > 0 {
+		if _, err := s.stdout.Write(append(ob.Output, '\n')); err != nil {
+			warn(s, err)
+		}
+	}
+	if ob.Entry == nil {
 		return nil
 	}
-	if err := store.Append(stateDir(s), ob.Step); err != nil {
+	if err := store.Append(cfg.StateDir, ob.Entry); err != nil {
 		warn(s, err)
 	}
 	return nil
@@ -136,7 +160,11 @@ func installCmd(s system) error {
 		return nil
 	}
 	fmt.Fprintf(s.stdout, "Installed whoa in %s\n", path)
-	fmt.Fprintln(s.stdout, "Restart Claude Code, then run a tool call. Steps are recorded under", filepath.Join(stateDir(s), "sessions"))
+	cfg, err := config.Load(s.home)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(s.stdout, "Restart Claude Code, then run a tool call. Steps are recorded under", filepath.Join(cfg.StateDir, "sessions"))
 	return nil
 }
 
@@ -166,10 +194,6 @@ func whoaBinary() string {
 	}
 	return binary
 }
-
-// stateDir is where Session logs live. It becomes the state_dir Parameter in
-// a later ticket; today it has one value.
-func stateDir(s system) string { return filepath.Join(s.home, ".whoa") }
 
 func claudeSettingsPath(s system) string {
 	return filepath.Join(s.home, ".claude", "settings.json")
