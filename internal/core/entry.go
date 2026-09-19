@@ -19,6 +19,10 @@ const (
 	KindNudge Kind = "nudge"
 	// KindGoal is a Substantive Instruction: what the user asked for.
 	KindGoal Kind = "goal"
+	// KindWrong is a Misjudgment the user reported: the Verdict at Ref was
+	// not right. It is the only entry a person writes, and the reason the
+	// calibration corpus is a by-product of using whoa rather than a chore.
+	KindWrong Kind = "wrong"
 )
 
 // Outcome is how a Step ended.
@@ -56,6 +60,19 @@ type Entry struct {
 	// never the agent's work: what they asked for, in the language they asked
 	// for it in. Nothing derived from a file, a command or an error goes here.
 	Goal string `json:"goal,omitempty"`
+
+	// Kind == KindWrong: which line of this log the Misjudgment disputes,
+	// counting from 1.
+	//
+	// A line number rather than a timestamp, because timestamps are not
+	// unique: two Steps inside the same millisecond are ordinary, and a
+	// Misjudgment that could refer to either would mark both. The log is
+	// append-only, so a line number never moves, and it reconstructs the
+	// evidence exactly — everything before it is what whoa saw.
+	//
+	// Counting from 1 so that the zero value means "no reference", and so
+	// that it matches what every tool that reads a file by line says.
+	Ref int `json:"ref,omitempty"`
 
 	// Kind == KindStep.
 	Tool      string `json:"tool,omitempty"`

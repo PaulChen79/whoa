@@ -124,6 +124,20 @@ log never carries your code, that a Halt never ends your turn — are
 **Invariants** and are deliberately not configurable. See
 [ADR 0004](docs/adr/0004-parameters-and-invariants.md).
 
+## When whoa gets it wrong
+
+Run `whoa wrong`. It marks the last thing whoa said as a Misjudgment, against
+the exact line of the log that produced it, and tells you what it marked.
+
+That mark is the point. Whether whoa's judgement is any good is not something
+its author can assert; it is something a corpus of disputed Verdicts can show.
+The corpus only exists if producing it costs one word at the moment of
+annoyance, so that is what it costs.
+
+Session logs expire after `retention_days` (default 14). A log holding a
+Misjudgment is kept regardless, so marking a Verdict also preserves the
+evidence behind it.
+
 ## Design
 
 - [`CONTEXT.md`](CONTEXT.md) — the vocabulary. Start here.

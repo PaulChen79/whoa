@@ -28,6 +28,7 @@ Usage:
   whoa install     register whoa's hooks with Claude Code and Codex
   whoa uninstall   remove them again
   whoa doctor      check whoa is actually running, per Harness
+  whoa wrong       mark the last thing whoa said as a Misjudgment
   whoa hook        observe one Step (invoked by the Harness, reads stdin)
   whoa version     print the version
 `
@@ -75,6 +76,8 @@ func run(args []string, s system) error {
 		return hook(s, harnessFrom(args[1:]))
 	case "install":
 		return installCmd(s)
+	case "wrong":
+		return wrongCmd(s)
 	case "doctor":
 		return doctorCmd(s)
 	case "uninstall":
@@ -155,6 +158,7 @@ func hook(s system, harness core.Harness) error {
 	if err := store.Append(cfg.StateDir, ob.Entry); err != nil {
 		warn(s, err)
 	}
+	sweep(s, cfg)
 	return nil
 }
 
@@ -164,6 +168,28 @@ func hook(s system, harness core.Harness) error {
 // routed to the Harness's debug log, so `claude --debug` surfaces this today
 // and `whoa doctor` will surface it without the flag. What must not happen is
 // whoa swallowing its own failure while the user believes it is watching.
+// sweep expires old Session logs, at most once a day.
+//
+// It runs from the hook because that is the only thing that runs regularly.
+// Doing it on every Step would walk the log directory thousands of times a
+// day; doing it only from a command the user has to remember would mean it
+// never happened at all, which for a retention promise is the same as lying.
+//
+// The marker is written before the sweep, so a sweep that fails does not
+// retry on every Step for the rest of the day.
+func sweep(s system, cfg core.Config) {
+	if cfg.RetentionDays <= 0 || !store.SweepDue(cfg.StateDir, s.now()) {
+		return
+	}
+	if err := store.MarkSwept(cfg.StateDir, s.now()); err != nil {
+		warn(s, err)
+		return
+	}
+	if _, err := store.Expire(cfg.StateDir, cfg.RetentionDays); err != nil {
+		warn(s, err)
+	}
+}
+
 func warn(s system, err error) {
 	fmt.Fprintln(s.stderr, "whoa:", err)
 }

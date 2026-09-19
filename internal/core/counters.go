@@ -64,3 +64,19 @@ func recentSteps(entries []Entry, window int) []Entry {
 	}
 	return steps
 }
+
+// Before returns the log as it stood immediately before the given line,
+// counting from 1.
+//
+// Disputing a Verdict is only meaningful if the evidence behind it can be
+// reconstructed exactly. A Misjudgment records which line it disputes, and
+// this is what turns that reference back into the Window the Verdict saw.
+func Before(log []Entry, line int) []Entry {
+	if line <= 0 {
+		return nil
+	}
+	if line > len(log) {
+		return log
+	}
+	return log[:line-1]
+}
