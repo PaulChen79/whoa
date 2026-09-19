@@ -64,6 +64,11 @@ nothing is kept unless it became a Signal or a redacted command.
 
 You can read the whole of this promise in one place: `internal/redact`.
 
+Better, check it. `whoa digest` prints the exact payload whoa would send to
+the Judge, for one of your own real sessions, and sends nothing. It needs no
+API key and makes no network call. Read it before you decide whether to turn
+the Judge on.
+
 ## Harnesses
 
 | | Claude Code | Codex |

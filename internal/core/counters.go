@@ -52,6 +52,16 @@ func Count(entries []Entry, window int) Counters {
 
 // recentSteps is the Window: the last window Steps, ignoring everything whoa
 // wrote about itself.
+// Window returns the Steps the Counters were computed over: the last window
+// Steps of the log, oldest first.
+//
+// Exported so that a Digest shows the Judge exactly the Steps the Counters
+// describe. If the two could disagree, a Verdict would be arguing with its own
+// evidence.
+func Window(entries []Entry, window int) []Entry {
+	return recentSteps(entries, window)
+}
+
 func recentSteps(entries []Entry, window int) []Entry {
 	steps := make([]Entry, 0, len(entries))
 	for _, e := range entries {

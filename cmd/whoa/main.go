@@ -29,6 +29,7 @@ Usage:
   whoa uninstall   remove them again
   whoa doctor      check whoa is actually running, per Harness
   whoa wrong       mark the last thing whoa said as a Misjudgment
+  whoa digest      print exactly what would be sent to the Judge, and send nothing
   whoa hook        observe one Step (invoked by the Harness, reads stdin)
   whoa version     print the version
 `
@@ -76,6 +77,8 @@ func run(args []string, s system) error {
 		return hook(s, harnessFrom(args[1:]))
 	case "install":
 		return installCmd(s)
+	case "digest":
+		return digestCmd(s, args[1:])
 	case "wrong":
 		return wrongCmd(s)
 	case "doctor":
@@ -134,9 +137,18 @@ func hook(s system, harness core.Harness) error {
 
 	// The Session id decides which log to read, and it is in the payload, so
 	// the core is asked for it before it is asked to decide.
-	log, err := store.Load(cfg.StateDir, core.SessionID(raw))
-	if err != nil {
-		warn(s, err)
+	//
+	// An empty id means the payload was unreadable or is not about a Session.
+	// Loading with it would report "empty session id", which describes whoa's
+	// own question rather than the problem; the core is left to make the same
+	// judgement and return a no-op.
+	var log []core.Entry
+	if session := core.SessionID(raw); session != "" {
+		loaded, err := store.Load(cfg.StateDir, session)
+		if err != nil {
+			warn(s, err)
+		}
+		log = loaded
 	}
 
 	ob := core.Observe(core.Input{
