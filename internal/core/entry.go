@@ -1,6 +1,10 @@
 package core
 
-import "time"
+import (
+	"time"
+
+	"github.com/PaulChen79/whoa/internal/redact"
+)
 
 // Kind says what a line of the Session log records.
 //
@@ -54,11 +58,18 @@ type Entry struct {
 	Goal string `json:"goal,omitempty"`
 
 	// Kind == KindStep.
-	Tool       string  `json:"tool,omitempty"`
-	ToolUseID  string  `json:"tool_use_id,omitempty"`
-	AgentID    string  `json:"agent_id,omitempty"`
-	Outcome    Outcome `json:"outcome,omitempty"`
-	DurationMS int     `json:"duration_ms,omitempty"`
+	Tool      string `json:"tool,omitempty"`
+	ToolUseID string `json:"tool_use_id,omitempty"`
+	AgentID   string `json:"agent_id,omitempty"`
+
+	// What Seam 2 was willing to keep from the tool's arguments. Command is
+	// text only after Redaction (ADR 0003); Signals are counts and flags only
+	// (ADR 0001). Together these are the whole of what a Step says about what
+	// the agent actually did.
+	Command    *redact.Redacted `json:"command,omitempty"`
+	Signals    *redact.Signals  `json:"signals,omitempty"`
+	Outcome    Outcome          `json:"outcome,omitempty"`
+	DurationMS int              `json:"duration_ms,omitempty"`
 
 	// Kind == KindNudge: the Counter fact that fired, kept so that a Nudge can
 	// be replayed, argued with, and marked as a Misjudgment later.

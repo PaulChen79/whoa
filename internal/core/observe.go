@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"github.com/PaulChen79/whoa/internal/redact"
 	"time"
 )
 
@@ -93,15 +94,16 @@ type Observation struct {
 // hookPayload is the subset of a Harness hook payload whoa reads. Fields it
 // does not name are ignored, so a Harness adding fields cannot break parsing.
 type hookPayload struct {
-	SessionID  string `json:"session_id"`
-	PromptID   string `json:"prompt_id"`
-	TurnID     string `json:"turn_id"`
-	Event      string `json:"hook_event_name"`
-	ToolName   string `json:"tool_name"`
-	ToolUseID  string `json:"tool_use_id"`
-	Prompt     string `json:"prompt"`
-	AgentID    string `json:"agent_id"`
-	DurationMS int    `json:"duration_ms"`
+	SessionID  string          `json:"session_id"`
+	PromptID   string          `json:"prompt_id"`
+	TurnID     string          `json:"turn_id"`
+	Event      string          `json:"hook_event_name"`
+	ToolName   string          `json:"tool_name"`
+	ToolUseID  string          `json:"tool_use_id"`
+	ToolInput  json.RawMessage `json:"tool_input"`
+	Prompt     string          `json:"prompt"`
+	AgentID    string          `json:"agent_id"`
+	DurationMS int             `json:"duration_ms"`
 }
 
 // event finds the hookEvent this payload belongs to, if whoa registered for it.
@@ -170,6 +172,8 @@ func Observe(in Input) Observation {
 		return in.intervene(p)
 	}
 
+	command, signals := seam2(p.ToolInput)
+
 	return Observation{Entry: &Entry{
 		Kind:       KindStep,
 		Timestamp:  in.Now.UTC(),
@@ -178,9 +182,29 @@ func Observe(in Input) Observation {
 		Turn:       p.turnKey(),
 		Tool:       p.ToolName,
 		ToolUseID:  p.ToolUseID,
+		Command:    command,
+		Signals:    signals,
 		AgentID:    p.AgentID,
 		Goal:       goalInForce(in.Log),
 		Outcome:    event.Records,
 		DurationMS: p.DurationMS,
 	}}
+}
+
+// seam2 is the only way tool arguments enter a Step. Whatever it does not
+// return is discarded: see package redact, and ADRs 0001 and 0003.
+//
+// Both results are pointers so that a Step which touched nothing whoa
+// understands carries no empty objects in the log.
+func seam2(input json.RawMessage) (*redact.Redacted, *redact.Signals) {
+	got := redact.FromToolInput(input)
+	var command *redact.Redacted
+	if (got.Command != redact.Redacted{}) {
+		command = &got.Command
+	}
+	var signals *redact.Signals
+	if !got.Signals.Empty() {
+		signals = &got.Signals
+	}
+	return command, signals
 }

@@ -137,9 +137,48 @@ func TestRecordedStepCarriesNoFreeText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshalling Step: %v", err)
 	}
-	for _, secret := range []string{"npm test", "Cannot find module", "Run test suite", "/Users/u/proj"} {
-		if strings.Contains(string(line), secret) {
-			t.Errorf("Step contains free text %q:\n%s", secret, line)
+	// The command survives, redacted, because ADR 0003 says it earns its
+	// place. Nothing else the payload carried does: not the error, not the
+	// description, not the working directory, not a path.
+	for _, text := range []string{"Cannot find module", "Run test suite", "/Users/u/proj", "auth.ts"} {
+		if strings.Contains(string(line), text) {
+			t.Errorf("Step contains free text %q:\n%s", text, line)
+		}
+	}
+	if ob.Entry.Command == nil || ob.Entry.Command.Text != "npm test" {
+		t.Errorf("Command = %+v, want the redacted command text", ob.Entry.Command)
+	}
+}
+
+// The test above can only catch text someone thought to look for. This one
+// catches a field nobody thought about at all: every key a Step writes must be
+// one this list names, so adding a field that carries text fails here first.
+func TestAStepWritesOnlyTheFieldsItIsAllowedTo(t *testing.T) {
+	allowed := map[string]bool{
+		"kind": true, "ts": true, "harness": true, "session": true, "turn": true,
+		"tool": true, "tool_use_id": true, "agent_id": true, "outcome": true,
+		"duration_ms": true, "goal": true,
+		// Seam 2 output, and nothing else from the tool's arguments.
+		"command": true, "signals": true,
+	}
+
+	for _, name := range []string{"posttooluse_write", "posttooluse_subagent", "posttoolusefailure_bash"} {
+		ob := observe(t, name)
+		if ob.Entry == nil {
+			continue
+		}
+		line, err := json.Marshal(ob.Entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(line, &fields); err != nil {
+			t.Fatal(err)
+		}
+		for key := range fields {
+			if !allowed[key] {
+				t.Errorf("%s: Step writes unlisted field %q; every field is part of the privacy promise", name, key)
+			}
 		}
 	}
 }

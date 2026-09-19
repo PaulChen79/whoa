@@ -41,6 +41,30 @@ timings. You can read it yourself: it is one JSON object per line.
 
 In the default Mode, whoa makes no network calls at all.
 
+Whatever the Mode, your source code never leaves the machine. whoa reads a
+tool's arguments and keeps two things from them, and nothing else:
+
+**Signals** — counts and flags, never text. From an edit whoa keeps how many
+assertions it added and removed, how many skip markers it added, how many
+lines changed, and whether the file was a test. It does not keep the code, the
+file path, or the file name. Every Signal field is machine-checked to be a
+number or a boolean, so a field that carried text would fail the build.
+
+**Commands**, after Redaction. Inline environment values, credentials in URLs,
+authorization and cookie headers, values after flags like `--token`, published
+key shapes (`sk-`, `ghp_`, `AKIA`, `xoxb-`, JWTs and others) and unstructured
+blobs of 32 characters or more are replaced with `[redacted]`. When whoa cannot
+find where a secret ends — a heredoc, a key body, an unbalanced quote, anything
+spanning more than one line — it keeps the program name and discards the entire
+rest of the command.
+
+Tool output is read and dropped. So is every field whoa does not recognise,
+including ones added by a future release of your agent: the rule is that
+nothing is kept unless it became a Signal or a redacted command.
+
+You can read the whole of this promise in one place: `internal/redact`. Run
+`whoa digest` to print exactly what would be sent, and send nothing.
+
 ## Configuration
 
 whoa reads `~/.whoa/config.json` if it exists. Every key is optional; anything

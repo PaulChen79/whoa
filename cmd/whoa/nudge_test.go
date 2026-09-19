@@ -115,8 +115,9 @@ func TestALoopEarnsANudgeBeforeTheNextStep(t *testing.T) {
 	}
 }
 
-// Nothing the agent ran reaches the log, however loudly the payload carries it.
-func TestTheLogNeverLearnsWhatTheAgentRan(t *testing.T) {
+// What the agent ran reaches the log only after Seam 2 has been through it:
+// the command with its secrets gone, and nothing else the payload carried.
+func TestTheLogLearnsOnlyWhatSeam2Allows(t *testing.T) {
 	home := t.TempDir()
 	writeConfig(t, home, `{"trigger": {"repeated_failures": 2}}`)
 	feed(t, home, failedStep)
@@ -127,10 +128,13 @@ func TestTheLogNeverLearnsWhatTheAgentRan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, leak := range []string{"npm test", "exit 1", "tool_input", "tool_response"} {
+	for _, leak := range []string{"exit 1", "tool_input", "tool_response", "Cannot find"} {
 		if bytes.Contains(b, []byte(leak)) {
 			t.Errorf("the Session log contains %q:\n%s", leak, b)
 		}
+	}
+	if !bytes.Contains(b, []byte(`"command":{"text":"npm test"}`)) {
+		t.Errorf("the redacted command is missing; ADR 0003 says it earns its place:\n%s", b)
 	}
 }
 
