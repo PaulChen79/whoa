@@ -1,8 +1,6 @@
-# Private design docs. docs/agents/ and docs/adr/ are exceptions: they are
-# written for contributors and their agents, so they belong in version control.
-docs/*
-!docs/agents/
-!docs/adr/
+# Design docs, ADRs and the spec stay local. They are working material for
+# developing whoa, not part of what whoa ships.
+docs/
 
 # Build output
 /bin/

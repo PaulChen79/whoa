@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 260" width="1200" height="260" role="img" aria-label="whoa — a stop-loss for coding agents">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1d2230"/>
+      <stop offset="55%" stop-color="#212736"/>
+      <stop offset="100%" stop-color="#394260"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="260" fill="url(#bg)"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <text x="72" y="118" font-size="72" font-weight="700" fill="#e6edf3">whoa</text>
+    <text x="232" y="118" font-size="72" fill="#f85149">🛑</text>
+    <text x="74" y="163" font-size="25" fill="#769ff0">a stop-loss for coding agents</text>
+    <text x="74" y="206" font-size="17" fill="#8b98b0">counts loops in code · judges drift with Jev · your source never leaves the machine</text>
+  </g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#6e7a91">
+    <text x="820" y="92">$ npm test   ✗</text>
+    <text x="820" y="118">$ npm test   ✗</text>
+    <text x="820" y="144">$ npm test   ✗</text>
+    <text x="820" y="170">$ npm test   ✗</text>
+    <text x="820" y="200" fill="#f0a35e">whoa: 4 in a row.</text>
+  </g>
+  <rect x="806" y="70" width="2" height="146" fill="#394260"/>
+</svg>
