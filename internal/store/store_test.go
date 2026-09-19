@@ -202,3 +202,56 @@ func TestAppendRefusesAnEntryWithNoKind(t *testing.T) {
 		t.Error("Append() wrote an entry with no kind")
 	}
 }
+
+// A Misjudgment report is worth something only if the Verdict it disputes can
+// be reproduced from the log on disk. Replaying in memory proves nothing about
+// a pure function; this writes the Session out, reads it back, and checks that
+// the Counters and the Nudge decision come out identical.
+func TestAPersistedLogReplaysToTheIdenticalVerdict(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+
+	var live []core.Entry
+	for i := 0; i < 4; i++ {
+		e := core.Entry{
+			Kind: core.KindStep, Timestamp: now, Harness: core.ClaudeCode,
+			Session: "replay", Turn: "t1", Tool: "Bash", Outcome: core.OutcomeError,
+			Goal: "修好 flaky test",
+		}
+		if err := Append(dir, &e); err != nil {
+			t.Fatal(err)
+		}
+		live = append(live, e)
+	}
+
+	reloaded, err := Load(dir, "replay")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := core.Defaults()
+	cfg.Trigger = core.Trigger{RepeatedFailures: 3}
+
+	if got, want := core.Count(reloaded, cfg.Window), core.Count(live, cfg.Window); got != want {
+		t.Errorf("Counters after a round trip = %+v, want %+v", got, want)
+	}
+
+	raw := []byte(`{"session_id":"replay","prompt_id":"t1","hook_event_name":"PreToolUse","tool_name":"Bash"}`)
+	verdict := func(log []core.Entry) core.Observation {
+		return core.Observe(core.Input{Raw: raw, Harness: core.ClaudeCode, Log: log, Config: cfg, Now: now})
+	}
+
+	fromDisk, inMemory := verdict(reloaded), verdict(live)
+	if len(inMemory.Output) == 0 {
+		t.Fatal("expected a Nudge to replay")
+	}
+	if string(fromDisk.Output) != string(inMemory.Output) {
+		t.Errorf("Verdict from disk = %s, want %s", fromDisk.Output, inMemory.Output)
+	}
+	if fromDisk.Human != inMemory.Human {
+		t.Errorf("human line from disk = %q, want %q", fromDisk.Human, inMemory.Human)
+	}
+	if *fromDisk.Entry != *inMemory.Entry {
+		t.Errorf("recorded Entry from disk = %+v, want %+v", *fromDisk.Entry, *inMemory.Entry)
+	}
+}

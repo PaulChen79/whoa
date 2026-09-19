@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,6 +141,65 @@ func TestEveryReturnCarriesAUsableStateDir(t *testing.T) {
 			}
 			if cfg.StateDir != filepath.Join(home, ".whoa") {
 				t.Errorf("state_dir = %q, want the default under home", cfg.StateDir)
+			}
+		})
+	}
+}
+
+// A caller that reports the error and keeps watching must keep watching with
+// values that behave. Left in place, `window: 0` does not narrow the Window,
+// it removes the bound entirely.
+func TestARejectedValueDoesNotSurviveTheRejection(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want func(core.Config) error
+	}{
+		{
+			name: "a zero window falls back to the default rather than going unbounded",
+			body: `{"window":0}`,
+			want: func(c core.Config) error {
+				if c.Window != core.Defaults().Window {
+					return fmt.Errorf("window = %d, want the default %d", c.Window, core.Defaults().Window)
+				}
+				return nil
+			},
+		},
+		{
+			name: "a negative window likewise",
+			body: `{"window":-5}`,
+			want: func(c core.Config) error {
+				if c.Window <= 0 {
+					return fmt.Errorf("window = %d, want a usable one", c.Window)
+				}
+				return nil
+			},
+		},
+		{
+			name: "an unknown mode falls back to counters",
+			body: `{"mode":"aggressive"}`,
+			want: func(c core.Config) error {
+				if c.Mode != core.ModeCounters {
+					return fmt.Errorf("mode = %q, want %q", c.Mode, core.ModeCounters)
+				}
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := homeWith(t, tt.body)
+
+			cfg, err := Load(home)
+
+			if err == nil {
+				t.Fatal("expected the value to be rejected out loud")
+			}
+			if e := tt.want(cfg); e != nil {
+				t.Error(e)
+			}
+			if cfg.StateDir == "" {
+				t.Error("state_dir must survive a rejection")
 			}
 		})
 	}

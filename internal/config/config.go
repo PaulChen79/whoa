@@ -58,7 +58,16 @@ func Load(home string) (core.Config, error) {
 	if cfg.StateDir == "" {
 		cfg.StateDir = filepath.Join(home, ".whoa")
 	}
-	return cfg, validate(cfg)
+
+	// A rejected value must not survive the rejection. The caller is told, but
+	// the caller carries on watching, and it has to carry on with values that
+	// behave. `window: 0` left in place does not disable the Window, it makes
+	// it unbounded — the opposite of anything the user could have meant.
+	if err := validate(cfg); err != nil {
+		fallback.StateDir = cfg.StateDir
+		return fallback, err
+	}
+	return cfg, nil
 }
 
 // validate rejects values that would make whoa behave in a way the user
