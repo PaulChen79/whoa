@@ -1,29 +1,28 @@
-# 內部設計文件（不隨 repo 發佈）
-# docs/agents/ 與 docs/adr/ 例外：給貢獻者與其 agent 讀的，必須進版控
+# Private design docs. docs/agents/ and docs/adr/ are exceptions: they are
+# written for contributors and their agents, so they belong in version control.
 docs/*
 !docs/agents/
 !docs/adr/
 
-# 相依與建置產物
-node_modules/
-dist/
-build/
-*.tsbuildinfo
+# Build output
+/bin/
+/dist/
+/whoa
 
-# 環境與金鑰
+# Environment and secrets
 .env
 .env.*
 !.env.example
 
-# whoa 執行期狀態（ring buffer、verdict flag、replay 輸出）
+# whoa runtime state (Session logs, Verdicts, replay output)
 .whoa/
 *.whoa.jsonl
 
-# 編輯器與作業系統
+# Editors and OS
 .DS_Store
 .vscode/
 .idea/
 
-# 測試與覆蓋率
-coverage/
-.nyc_output/
+# Test and coverage
+coverage.out
+coverage.html
